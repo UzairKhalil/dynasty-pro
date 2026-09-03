@@ -1,0 +1,11 @@
+{
+  "name": "dynasty",
+  "version": "1.0.0",
+  "description": "Tic tac toe with a series ledger for Uzair, Maryam, Zahra and Zain",
+  "private": true,
+  "scripts": {
+    "test": "node test/game.test.js && node test/storage.test.js",
+    "serve": "npx serve ."
+  },
+  "devDependencies": { "jsdom": "^30.0.1" }
+}
