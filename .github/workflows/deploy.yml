@@ -21,9 +21,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Must satisfy the toolchain's own engines, not just "an LTS":
+      # vitest 5 wants ^22.12 || ^24 and jsdom 30 wants ^22.22.2 || ^24.15.
+      # Node 20 installs fine (npm only warns on engines) and then fails at
+      # `npm test`, which is exactly how this broke the first deploy.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
