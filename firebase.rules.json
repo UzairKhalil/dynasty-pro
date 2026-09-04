@@ -1,0 +1,67 @@
+{
+  "rules": {
+    "_comment": [
+      "Dynasty has no authentication: it is a four-person game on a static site,",
+      "and the player codes live in the bundle. These rules therefore cannot say",
+      "WHO is writing. What they can do is constrain WHAT can be written, so a",
+      "stray client or a bad deploy cannot corrupt the shape of the data or let",
+      "the database grow without bound.",
+      "",
+      "If you want real per-player permissions later, turn on Firebase Anonymous",
+      "Auth, map each uid to a player once, and gate writes on that uid instead."
+    ],
+
+    "presence": {
+      ".read": true,
+      "$player": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['online', 'at'])",
+        "online": { ".validate": "newData.isBoolean()" },
+        "at":     { ".validate": "newData.isNumber() || newData.val() == now" },
+        "busy":   { ".validate": "newData.isString() || newData.val() == null" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "invites": {
+      "$player": {
+        ".read": true,
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['matchId', 'from'])",
+        "matchId": { ".validate": "newData.isString() && newData.val().length < 64" },
+        "from":    { ".validate": "newData.isString() && newData.val().length < 32" },
+        "mode":    { ".validate": "newData.val() == 'duel' || newData.val() == 'free'" },
+        "at":      { ".validate": "newData.isNumber() || newData.val() == now" },
+        "$other":  { ".validate": false }
+      }
+    },
+
+    "matches": {
+      ".read": true,
+      "$match": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['host', 'guest', 'status'])",
+        "status": {
+          ".validate": "newData.val().matches(/^(pending|active|declined|cancelled|done)$/)"
+        },
+        "game": {
+          "cells": { ".validate": "newData.isString() && newData.val().length <= 36" },
+          "turn":  { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 4" },
+          "size":  { ".validate": "newData.val() == 3 || newData.val() == 6" }
+        }
+      }
+    },
+
+    "games": {
+      ".read": true,
+      ".write": true,
+      "$game": {
+        ".validate": "newData.hasChildren(['players', 'mode', 'at'])",
+        "mode":   { ".validate": "newData.val() == 'duel' || newData.val() == 'free'" },
+        "kind":   { ".validate": "newData.val().matches(/^(local|solo|online)$/)" },
+        "winner": { ".validate": "newData.isString() || newData.val() == null" },
+        "at":     { ".validate": "newData.isNumber()" }
+      }
+    }
+  }
+}
