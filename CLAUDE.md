@@ -100,8 +100,34 @@ class is applied imperatively for exactly this reason — declaring it in
 `className` lets React coalesce the change and the animation never restarts.
 
 **6. Seats are patched, not rebuilt.** (`Seats.jsx`)
-Stable keys off the roster mean only class names and text change between turns.
-Rebuilding causes layout shift each turn.
+Stable keys off the player id mean only class names and text change between
+turns. Rebuilding shifts the layout under a thumb already reaching for a square.
+Note the seat bar lists only the players *in* the game — it used to render all
+four with two marked "sitting out", which on a phone pushed the board and the
+turn indicator onto separate screens.
+
+**7. A straight strike needs a userSpaceOnUse filter.** (`ChalkDefs.jsx`)
+SVG filter regions default to objectBoundingBox units — a percentage of the
+shape's bounding box. A horizontal or vertical strike has a zero-extent bbox,
+so the region collapses and the browser paints nothing. That silently killed
+the strike on all six row and column wins; only the two diagonals ever drew
+one. `#chalk-line` is the fixed-region filter for anything straight; `#chalk`
+stays on bbox units for shapes with area.
+
+## The playing screen is mobile-first
+
+`--play-w` in `app.css` is one width for the whole playing column — match bar,
+turn line, board, actions — and it is sized against the **viewport height**
+(`dvh`, so mobile browser chrome counts), not just the column. On a phone those
+four have to share one screen. They are ordered names → turn → board → actions
+for the same reason: the turn indicator used to sit *below* the board, which on
+a 390px viewport put it 368px past the board's top edge, so you could never see
+the squares and whose turn it was at once.
+
+Under 560px wide, or under 700px tall, the masthead is hidden during a game and
+the welcome bar is dropped — roughly 110px the board needs more than the
+wordmark does. "← Lobby" carries the navigation. Verified at 360×640, 390×780,
+430×860, 820×660 and 1200×1000; the whole game fits one screen at every one.
 
 ## Storage
 

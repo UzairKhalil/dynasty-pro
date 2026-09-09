@@ -7,8 +7,8 @@ import Welcome from './components/Welcome.jsx';
 import Board from './components/Board.jsx';
 import Seats from './components/Seats.jsx';
 import { Standings, HeadToHead, GameLog } from './components/Panels.jsx';
-import { PLAYERS, P, IDS, listNames, isAdmin } from './data/players.js';
-import { MODES, createGame, applyMove, undoMove, advanceQueue, emptyQueue } from './game/rules.js';
+import { PLAYERS, P, IDS, isAdmin } from './data/players.js';
+import { createGame, applyMove, undoMove, advanceQueue, emptyQueue } from './game/rules.js';
 import { chooseMove } from './game/ai.js';
 import { blankLedger, foldGames } from './game/ledger.js';
 import { open as openStore } from './net/store.js';
@@ -284,7 +284,7 @@ export default function App() {
   return (
     <div className="wrap">
       <ChalkDefs />
-      <header className="masthead">
+      <header className={'masthead' + (session ? ' compact' : '')}>
         <p className="eyebrow">Tic tac toe</p>
         <h1>Dynasty</h1>
         <p className="tagline">Four claimants. Nine squares. The throne changes hands weekly.</p>
@@ -297,7 +297,7 @@ export default function App() {
         </div>
       </header>
 
-      <Welcome me={me} ledger={ledger} onSwitch={signOut} />
+      {!session && <Welcome me={me} ledger={ledger} onSwitch={signOut} />}
 
       <div className="cols">
         <section>
@@ -351,7 +351,6 @@ function GameView({ session, me, onPlay, onNext, onLeave, onUndo }) {
   const current = game.over ? null : game.order[game.turn];
   const myTurn = kind !== 'online' || current === me;
   const waiting = kind === 'online' && !game.over && !myTurn;
-  const sitting = IDS.filter((id) => game.order.indexOf(id) < 0);
 
   let headline;
   let sub;
@@ -373,22 +372,33 @@ function GameView({ session, me, onPlay, onNext, onLeave, onUndo }) {
     sub = 'Waiting for their move';
   } else {
     headline = kind === 'online' ? 'Your turn' : P[current].name + '’s turn';
-    sub = sitting.length
-      ? 'Sitting out: ' + listNames(sitting)
-      : game.need + ' in a row wins';
+    sub = game.need + ' in a row wins';
   }
 
-  const label = { online: 'Online game', solo: 'Against the computer', local: 'On this device' }[kind];
+  // Short enough that the crumb row stays on one line at 360px. The seat bar
+  // right below already says who is playing, so these only need to say what
+  // KIND of game it is.
+  const label = { online: 'Online', solo: 'Computer', local: 'This device' }[kind];
   const headColor = game.over
     ? (game.winner ? P[game.winner].color : undefined)
     : (current ? P[current].color : undefined);
 
   return (
-    <>
-      <div className="crumb">
-        <button onClick={onLeave}>&larr; Lobby</button>
+    <div className="play">
+      <div className="play-top">
+        <button className="play-back" onClick={onLeave}>&larr; Lobby</button>
         <span className="pill">{label}</span>
-        <span className="pill">{MODES[game.mode].label}</span>
+        <span className="pill">{game.size}&times;{game.size}</span>
+      </div>
+
+      {/* Names first, then the turn, then the board. On a phone these have to
+          share one screen — the turn indicator used to sit below the board,
+          where you could never see it and the squares at the same time. */}
+      <Seats game={game} bots={bots} me={me} />
+
+      <div className={'turnline' + (waiting ? ' waiting' : '')}>
+        <div className="headline" id="headline" style={{ color: headColor }}>{headline}</div>
+        <div className="headline-sub" id="headline-sub">{sub}</div>
       </div>
 
       <div className={waiting ? 'turn-lock' : undefined}>
@@ -396,20 +406,15 @@ function GameView({ session, me, onPlay, onNext, onLeave, onUndo }) {
                locked={!myTurn || Boolean(current && bots[current])} />
       </div>
 
-      <div className="now" style={{ marginTop: 18 }}>
-        <div className="headline" id="headline" style={{ color: headColor }}>{headline}</div>
-        <div className="headline-sub" id="headline-sub">{sub}</div>
-        <Seats game={game} bots={bots} me={me} />
-        <div className="actions">
-          {game.over
-            ? <button className="act" id="primary" onClick={onNext}>Next game</button>
-            : <button className="act ghost" id="primary" onClick={onNext}>Restart game</button>}
-          {!game.over && kind !== 'online' && (
-            <button className="act ghost" id="undo" onClick={onUndo}
-                    disabled={game.moves.length === 0}>Undo move</button>
-          )}
-          <button className="act ghost" onClick={onLeave}>Leave</button>
-        </div>
+      <div className="play-actions">
+        {game.over
+          ? <button className="act" id="primary" onClick={onNext}>Next game</button>
+          : <button className="act ghost" id="primary" onClick={onNext}>Restart</button>}
+        {!game.over && kind !== 'online' && (
+          <button className="act ghost" id="undo" onClick={onUndo}
+                  disabled={game.moves.length === 0}>Undo</button>
+        )}
+        <button className="act ghost" onClick={onLeave}>Leave</button>
       </div>
 
       <p className="sr" role="status" aria-live="polite">
@@ -417,6 +422,6 @@ function GameView({ session, me, onPlay, onNext, onLeave, onUndo }) {
           ? (game.winner ? P[game.winner].name + ' wins.' : 'Game drawn.')
           : P[current].name + ' to play.'}
       </p>
-    </>
+    </div>
   );
 }

@@ -348,11 +348,11 @@ describe('INVARIANT 7 — a straight strike must not use a bbox-relative filter'
 });
 
 describe('INVARIANT 6 — seats are patched, not rebuilt', () => {
-  it('keeps the same four seat nodes as the turn changes', async () => {
+  it('keeps the very same seat nodes as the turn changes', async () => {
     await boot();
     await startDuel();
     const before = [...document.querySelectorAll('.seat')];
-    expect(before).toHaveLength(4);
+    expect(before).toHaveLength(2);
     await tap(0);
     await tap(4);
     expect([...document.querySelectorAll('.seat')]).toEqual(before);
@@ -362,9 +362,101 @@ describe('INVARIANT 6 — seats are patched, not rebuilt', () => {
     await boot();
     await startDuel();
     const states = () => [...document.querySelectorAll('.seat-state')].map((s) => s.textContent);
-    expect(states()).toEqual(['to play', 'waiting', 'sitting out', 'sitting out']);
+    expect(states()).toEqual(['to play', 'waiting']);
     await tap(0);
-    expect(states()).toEqual(['waiting', 'to play', 'sitting out', 'sitting out']);
+    expect(states()).toEqual(['waiting', 'to play']);
+  });
+
+  it('lists only the players actually in the game', async () => {
+    await boot();
+    await startDuel('maryam');
+    const names = () => [...document.querySelectorAll('.seat-name')].map((n) => n.textContent);
+    expect(names()).toEqual(['Uzair', 'Maryam']);
+    expect(document.body.textContent).not.toMatch(/sitting out/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /lobby/i }));
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole('button', { name: /all four/i }));
+    await act(async () => { await Promise.resolve(); });
+    expect(names()).toEqual(['Uzair', 'Maryam', 'Zahra', 'Zain']);
+  });
+});
+
+describe('the playing screen fits a phone', () => {
+  // The turn indicator used to render BELOW the board. On a 390px viewport
+  // that put it 368px past the board's top edge, so the squares and whose
+  // turn it was could never be on screen together.
+  it('puts the names and the turn above the board, not below it', async () => {
+    await boot();
+    await startDuel();
+    const seats = document.getElementById('seats');
+    const turn = document.getElementById('headline');
+    const board = document.querySelector('.board-shell');
+
+    expect(seats.compareDocumentPosition(turn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(turn.compareDocumentPosition(board) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('names both players and says whose turn it is, in one place', async () => {
+    await boot();
+    await startDuel('zahra');
+    const bar = document.getElementById('seats');
+    expect(bar.textContent).toMatch(/Uzair/);
+    expect(bar.textContent).toMatch(/Zahra/);
+    // the player on move is marked, not just implied
+    const active = bar.querySelector('.seat.active');
+    expect(active.querySelector('.seat-name').textContent).toBe('Uzair');
+    expect(active.querySelector('.seat-state').textContent).toBe('to play');
+    expect(headline()).toMatch(/Uzair/);
+  });
+
+  it('colours each name with that player’s own colour', async () => {
+    await boot();
+    await startDuel('zain');
+    const seats = [...document.querySelectorAll('.seat')];
+    expect(seats[0].getAttribute('style')).toContain('--uzair');
+    expect(seats[1].getAttribute('style')).toContain('--zain');
+  });
+
+  it('collapses the lobby chrome while a game is on', async () => {
+    await boot();
+    expect(document.querySelector('.masthead').className).not.toMatch(/compact/);
+    expect(document.querySelector('.welcome')).toBeTruthy();
+
+    await startDuel();
+    expect(document.querySelector('.masthead').className).toMatch(/compact/);
+    // the welcome bar is lobby context; it must not push the board down
+    expect(document.querySelector('.welcome')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /lobby/i }));
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector('.masthead').className).not.toMatch(/compact/);
+    expect(document.querySelector('.welcome')).toBeTruthy();
+  });
+
+  it('sizes the board against the viewport height, not just the column', async () => {
+    const fs = await import('node:fs');
+    const base = fs.readFileSync('src/styles/base.css', 'utf8');
+    const app = fs.readFileSync('src/styles/app.css', 'utf8');
+
+    // One width drives the whole playing column...
+    const playW = /--play-w:[^;]+;/.exec(app);
+    expect(playW, 'no --play-w defined').toBeTruthy();
+    expect(playW[0], 'board width must respond to viewport height').toMatch(/dvh|vh/);
+
+    // ...and the board consumes it rather than pinning its own 480px.
+    const rule = /\.board-shell\{[^}]*\}/.exec(base);
+    expect(rule).toBeTruthy();
+    expect(rule[0]).toMatch(/var\(--play-w/);
+    expect(rule[0]).not.toMatch(/max-width:480px/);
+  });
+
+  it('locks the match bar, turn line and actions to the board width', async () => {
+    const fs = await import('node:fs');
+    const app = fs.readFileSync('src/styles/app.css', 'utf8');
+    const shared = /\.play-top,\.seats,\.turnline,\.play-actions\{[^}]*\}/.exec(app);
+    expect(shared, 'playing column pieces are not width-locked together').toBeTruthy();
+    expect(shared[0]).toMatch(/var\(--play-w\)/);
   });
 });
 
@@ -397,7 +489,7 @@ describe('playing a duel on one device', () => {
     await tap(0); await tap(3); await tap(1); await tap(4); await tap(2);
     expect(sub()).toMatch(/next up Uzair v Zahra/);
     const states = [...document.querySelectorAll('.seat-state')].map((s) => s.textContent);
-    expect(states).toEqual(['winner', 'beaten', 'sitting out', 'sitting out']);
+    expect(states).toEqual(['winner', 'beaten']);
   });
 
   it('steps both players off after a draw', async () => {
@@ -421,7 +513,7 @@ describe('playing a duel on one device', () => {
     await startDuel();
     await tap(0);
     expect(headline()).toMatch(/Maryam/);
-    fireEvent.click(screen.getByRole('button', { name: /undo move/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^undo$/i }));
     await act(async () => { await Promise.resolve(); });
     expect(cells()[0].querySelector('.mark')).toBeNull();
     expect(headline()).toMatch(/Uzair/);
@@ -430,7 +522,7 @@ describe('playing a duel on one device', () => {
   it('disables undo with nothing to undo', async () => {
     await boot();
     await startDuel();
-    expect(screen.getByRole('button', { name: /undo move/i }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /^undo$/i }).disabled).toBe(true);
   });
 
   it('returns to the lobby and keeps the ledger', async () => {
@@ -466,7 +558,7 @@ describe('against the computer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /start solo game/i }));
     await act(async () => { await Promise.resolve(); });
-    expect(document.querySelectorAll('.seat-bot')).toHaveLength(2); // "you" + "bot"
+    expect(document.querySelectorAll('.seat-tag')).toHaveLength(2); // "you" + "bot"
 
     fireEvent.click(cells()[4]);
     await act(async () => { await vi.advanceTimersByTimeAsync(600); });

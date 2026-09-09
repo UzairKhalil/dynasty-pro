@@ -1,40 +1,55 @@
 import Mark from './Mark.jsx';
-import { PLAYERS } from '../data/players.js';
+import { P } from '../data/players.js';
 
 /**
- * INVARIANT 6 — seats are patched, never rebuilt. React gives this for free
- * as long as the rows keep stable keys off the roster: only className and text
- * change between turns, so there is no layout shift each move.
+ * Who is playing this game, and who is on move.
+ *
+ * INVARIANT 6 — seats are patched, never rebuilt. Stable keys off the player id
+ * mean only class names and text change between turns, so nothing shifts under
+ * a thumb that is already reaching for a square.
+ *
+ * Only the players actually IN the game are listed. Earlier this rendered all
+ * four with two marked "sitting out", which on a phone pushed the board and the
+ * turn indicator onto separate screens — the two things you most need to see
+ * together. The lobby is where the full roster belongs.
  */
 export default function Seats({ game, bots = {}, me = null }) {
   const current = game.over ? null : game.order[game.turn];
-  const playing = new Set(game.order);
+  const duel = game.order.length === 2;
+
+  const seat = (id) => {
+    let state;
+    if (!game.over) state = id === current ? 'to play' : 'waiting';
+    else if (!game.winner) state = 'drawn';
+    else state = game.winner === id ? 'winner' : 'beaten';
+
+    return (
+      <div
+        key={id}
+        className={
+          'seat' +
+          (id === current ? ' active' : '') +
+          (game.over && game.winner === id ? ' winner' : '') +
+          (game.over && game.winner && game.winner !== id ? ' beaten' : '')
+        }
+        style={{ '--seat-color': P[id].color }}
+      >
+        <Mark id={id} className="seat-mark" />
+        <span className="seat-name">{P[id].name}</span>
+        <span className="seat-tags">
+          {me === id && <span className="seat-tag">you</span>}
+          {bots[id] && <span className="seat-tag">bot</span>}
+        </span>
+        <span className="seat-state">{state}</span>
+      </div>
+    );
+  };
 
   return (
-    <div className="seats" id="seats">
-      {PLAYERS.map((p) => {
-        const inGame = playing.has(p.id);
-        let state;
-        if (!inGame) state = 'sitting out';
-        else if (!game.over) state = p.id === current ? 'to play' : 'waiting';
-        else if (!game.winner) state = 'drawn';
-        else state = game.winner === p.id ? 'winner' : 'beaten';
-
-        return (
-          <div key={p.id}
-               className={'seat' + (!inGame ? ' out' : '') +
-                 (p.id === current ? ' active' : '') +
-                 (game.over && game.winner === p.id ? ' winner' : '')}>
-            <Mark id={p.id} className="seat-mark" />
-            <span className="seat-name" style={{ color: p.color }}>
-              {p.name}
-              {me === p.id && <span className="seat-bot">you</span>}
-              {bots[p.id] && <span className="seat-bot">bot</span>}
-            </span>
-            <span className="seat-state">{state}</span>
-          </div>
-        );
-      })}
+    <div className={'seats' + (duel ? ' seats-duel' : ' seats-many')} id="seats">
+      {duel
+        ? [seat(game.order[0]), <span className="seats-vs" key="vs" aria-hidden="true">vs</span>, seat(game.order[1])]
+        : game.order.map(seat)}
     </div>
   );
 }

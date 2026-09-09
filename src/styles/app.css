@@ -122,3 +122,116 @@ button.who-row:disabled{cursor:default;opacity:.42}
   /* the switch button wraps to its own row rather than squeezing the name */
   .welcome-switch{grid-column:1 / -1;justify-self:start}
 }
+
+/* ================= playing screen ==================================
+   Built mobile-first. The whole point is that the match bar (who is
+   playing, whose turn) and the board occupy ONE screen on a phone, with
+   the actions reachable without scrolling. Everything here is sized so
+   that holds down to a 360px-wide, 640px-tall viewport.
+   ================================================================== */
+
+/* One width for the whole playing column, so the match bar, the turn line, the
+   board and the actions read as a single block instead of three loose bands.
+   Sized against the VIEWPORT HEIGHT, not just the column: on a phone all four
+   have to share one screen. dvh (not vh) so mobile browser chrome counts. */
+.play{--play-w:clamp(240px, min(100%, calc(100dvh - 300px)), 480px)}
+@supports not (height: 100dvh){
+  .play{--play-w:clamp(240px, min(100%, calc(100vh - 300px)), 480px)}
+}
+.play-top,.seats,.turnline,.play-actions{width:var(--play-w);margin-inline:auto}
+
+.play-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.play-back{background:transparent;border:0;padding:6px 2px;cursor:pointer;color:var(--chalk-dim);
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  transition:color .15s;margin-right:auto}
+.play-back:hover{color:var(--chalk)}
+
+/* ---- the match bar: who is playing, and who is on move ---- */
+
+.seats{margin:0 0 12px;border:1px solid var(--rule);border-radius:2px;
+  background:rgba(239,237,227,.04);padding:12px 10px}
+
+.seats-duel{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px}
+.seats-many{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+
+.seat{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;
+  padding:6px 4px;border-radius:2px;border-bottom:2px solid transparent;
+  transition:background .2s,border-color .2s,opacity .2s}
+.seat.active{background:rgba(239,237,227,.08);border-bottom-color:var(--seat-color)}
+.seat.beaten{opacity:.45}
+.seat.winner{background:rgba(239,237,227,.1);border-bottom-color:var(--seat-color)}
+
+.seat-mark{width:26px;height:26px;overflow:visible;display:block;flex:none}
+.seat-mark path{fill:none;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;
+  filter:url(#chalk)}
+.seat-name{font-family:var(--display);font-size:19px;line-height:1;text-transform:uppercase;
+  letter-spacing:.02em;font-weight:400;color:var(--seat-color);
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat-state{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--chalk-dim);white-space:nowrap}
+.seat.active .seat-state,.seat.winner .seat-state{color:var(--chalk)}
+.seat-tags{display:flex;gap:4px}
+.seat-tag{font-family:var(--mono);font-size:8px;letter-spacing:.14em;text-transform:uppercase;
+  border:1px solid var(--rule);border-radius:999px;padding:1px 5px;color:var(--chalk-dim)}
+.seats-vs{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--chalk-dim);opacity:.7;padding:0 2px}
+
+/* ---- the turn line, directly under the names and above the board ---- */
+
+.turnline{text-align:center;margin:0 0 14px}
+.turnline .headline{font-family:var(--display);font-size:clamp(22px,6.5vw,30px);line-height:1.05;
+  text-transform:uppercase;letter-spacing:.02em;font-weight:400;min-height:0}
+.turnline .headline-sub{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--chalk-dim);margin-top:5px;min-height:0;line-height:1.5}
+/* A quiet pulse only while it is someone else's move, so the screen reads as
+   "waiting" without anything jumping around. */
+.turnline.waiting .headline{animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.55}}
+
+.play-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px}
+.play-actions .act{flex:1 1 auto;min-width:96px;text-align:center}
+
+/* ---- lobby chrome collapses while a game is on ---- */
+
+.masthead.compact{padding-bottom:12px;margin-bottom:14px}
+.masthead.compact h1{font-size:clamp(24px,5vw,32px)}
+.masthead.compact .eyebrow{margin-bottom:6px}
+.masthead.compact .tagline,
+.masthead.compact .names{display:none}
+
+/* ---- phones ---- */
+
+@media (max-width:900px){
+  /* the board leads; standings and history follow it */
+  .cols{grid-template-columns:1fr}
+}
+
+@media (max-width:560px){
+  body{padding:16px 14px 28px}
+  /* Mid-game on a phone the wordmark is pure overhead — roughly 110px that the
+     board and the turn line need more. "Lobby" already says where you are. */
+  .masthead.compact{display:none}
+  .seats{padding:10px 6px}
+  .seat-name{font-size:17px}
+  .seat-mark{width:23px;height:23px}
+  .seats-many .seat-name{font-size:13px;letter-spacing:0}
+  .seats-many .seat-mark{width:19px;height:19px}
+  .seats-many .seat-state{font-size:8px;letter-spacing:.1em}
+  .seats-many .seat-tag{display:none}
+  .play-actions .act{padding:12px 10px;min-width:0;flex:1 1 30%}
+}
+
+@media (max-width:380px){
+  .seats-vs{display:none}
+  .seats-duel{grid-template-columns:1fr 1fr}
+}
+
+/* Short screens: give the board back the room the chrome would have taken. */
+@media (max-height:700px){
+  .masthead.compact{display:none}
+  .turnline{margin-bottom:8px}
+  .turnline .headline-sub{display:none}
+  .seats{margin-bottom:8px;padding:8px 6px}
+  .play-top{margin-bottom:8px}
+  .play-actions{margin-top:10px}
+}

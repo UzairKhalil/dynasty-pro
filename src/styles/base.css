@@ -62,7 +62,11 @@ h1{font-family:var(--display);font-size:clamp(46px,9vw,88px);line-height:.86;mar
 .chip.static{cursor:default;background:rgba(239,237,227,.12);color:var(--chalk);border-color:var(--rule-2)}
 .divider{width:1px;height:20px;background:var(--rule);margin:0 2px}
 
-.board-shell{position:relative;width:100%;max-width:480px;aspect-ratio:1/1;
+/* Sized against the VIEWPORT, not just the column. On a phone the board, the
+   match bar above it and the actions below it have to share one screen — the
+   old fixed 480px pushed the turn indicator 368px below the board, so you
+   could never see both at once. dvh (not vh) so mobile browser chrome counts. */
+.board-shell{position:relative;width:var(--play-w, 100%);margin-inline:auto;aspect-ratio:1/1;
   user-select:none;-webkit-user-select:none;touch-action:manipulation}
 .layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 /* Both axes declared: without explicit rows the tracks size to content
@@ -112,19 +116,6 @@ h1{font-family:var(--display);font-size:clamp(46px,9vw,88px);line-height:.86;mar
   text-transform:uppercase;letter-spacing:.02em;font-weight:400;min-height:38px}
 .headline-sub{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--chalk-dim);margin-top:6px;min-height:16px;line-height:1.5}
-.seats{margin:18px 0 0;display:grid;gap:2px}
-.seat{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:12px;align-items:center;
-  padding:10px 12px 10px 10px;border-left:2px solid transparent;
-  background:transparent;transition:background .2s,border-color .2s,opacity .2s}
-.seat.active{background:rgba(239,237,227,.07)}
-.seat.out{opacity:.4}
-.seat-mark{width:22px;height:22px;overflow:visible;display:block}
-.seat-mark path{fill:none;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;filter:url(#chalk)}
-.seat-name{font-family:var(--display);font-size:22px;line-height:1;text-transform:uppercase;
-  letter-spacing:.02em;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.seat-state{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
-  color:var(--chalk-dim);white-space:nowrap}
-.seat.active .seat-state,.seat.winner .seat-state{color:var(--chalk)}
 .actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
 .act{background:var(--chalk);color:#16322B;border:0;border-radius:2px;padding:11px 16px;cursor:pointer;
   font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;
