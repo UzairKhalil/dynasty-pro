@@ -769,3 +769,109 @@ describe('published-site basics', () => {
     expect(html).not.toMatch(/href="\/favicon/);      // an absolute path breaks a project page
   });
 });
+
+/* ------------------------------------------------------------------ */
+
+describe('the challenge card', () => {
+  // The row used to be one big button with the action as a FOURTH child while
+  // the phone breakpoint declared only three grid columns. The action wrapped
+  // onto its own line under the name and read as a rendering bug.
+  const online = (ids) => Object.fromEntries(
+    PLAYERS.map((p) => [p.id, { online: ids.includes(p.id), at: Date.now(), busy: null }]));
+
+  async function lobby(props = {}) {
+    const Lobby = (await import('../src/components/Lobby.jsx')).default;
+    render(
+      <Lobby
+        me="uzair"
+        presence={online(['uzair', 'maryam'])}
+        online
+        invite={null}
+        outgoing={null}
+        onChallenge={() => {}}
+        onRespond={() => {}}
+        onCancel={() => {}}
+        onLocal={() => {}}
+        onSolo={() => {}}
+        {...props}
+      />
+    );
+  }
+
+  it('gives every row exactly one line: mark, name over status, action', async () => {
+    await lobby();
+    const rows = [...document.querySelectorAll('.who-row')];
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      // mark + id block, plus the action only when there is one
+      expect(row.children.length).toBeLessThanOrEqual(3);
+      expect(row.querySelector('.who-mark')).toBeTruthy();
+      expect(row.querySelector('.who-name')).toBeTruthy();
+      expect(row.querySelector('.who-state')).toBeTruthy();
+    }
+  });
+
+  it('keeps the status word visible — a bare dot says nothing', async () => {
+    await lobby();
+    const states = [...document.querySelectorAll('.who-state')].map((s) => s.textContent.trim());
+    expect(states).toEqual(['you', 'online', 'away', 'away']);
+    // and each carries its own dot
+    expect(document.querySelectorAll('.who-state .dot')).toHaveLength(4);
+  });
+
+  it('offers a real button to challenge, only for who can be challenged', async () => {
+    await lobby();
+    const buttons = [...document.querySelectorAll('.who-go')];
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].tagName).toBe('BUTTON');
+    expect(buttons[0].textContent).toBe('Challenge');
+    // it belongs to the online player who is not me
+    expect(buttons[0].closest('.who-row').querySelector('.who-name').textContent).toBe('Maryam');
+  });
+
+  it('fires the challenge with the right player', async () => {
+    const seen = [];
+    await lobby({ onChallenge: (id) => seen.push(id) });
+    fireEvent.click(document.querySelector('.who-go'));
+    expect(seen).toEqual(['maryam']);
+  });
+
+  it('offers nobody while a challenge of your own is pending', async () => {
+    await lobby({ outgoing: { matchId: 'm1', guest: 'maryam' } });
+    expect(document.querySelectorAll('.who-go')).toHaveLength(0);
+    expect(screen.getByText(/waiting for/i)).toBeTruthy();
+  });
+
+  it('will not offer a challenge to someone already in a game', async () => {
+    const busy = online(['uzair', 'maryam']);
+    busy.maryam.busy = 'm1';
+    await lobby({ presence: busy });
+    expect(document.querySelectorAll('.who-go')).toHaveLength(0);
+    expect(document.body.textContent).toMatch(/in a game/);
+  });
+
+  it('presents an incoming challenge as two clear choices', async () => {
+    await lobby({ invite: { matchId: 'm1', from: 'maryam', mode: 'duel' } });
+    const banner = document.querySelector('.banner');
+    expect(banner.textContent).toMatch(/Maryam/);
+    expect(within(banner).getByRole('button', { name: /accept/i })).toBeTruthy();
+    expect(within(banner).getByRole('button', { name: /decline/i })).toBeTruthy();
+  });
+
+  it('stacks the banner and its choices on a phone', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync('src/styles/app.css', 'utf8');
+    const phone = css.slice(css.indexOf('@media (max-width:560px)'));
+    expect(phone).toMatch(/\.banner\{[^}]*flex-direction:column/);
+  });
+
+  it('never re-declares the row with fewer columns than it has children', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync('src/styles/app.css', 'utf8');
+    // exactly one grid-template-columns for .who-row, and it declares three
+    const decls = css.match(/\.who-row\{[^}]*grid-template-columns:[^;]+;/g) || [];
+    expect(decls).toHaveLength(1);
+    expect(decls[0]).toMatch(/grid-template-columns:\s*26px\s+minmax\(0,1fr\)\s+auto/);
+    expect(css).not.toMatch(/\.who-row\{grid-template-columns:22px/);
+  });
+});

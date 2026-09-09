@@ -30,20 +30,45 @@
 /* ---------- lobby ---------- */
 
 .lobby-grid{display:grid;gap:2px;margin-bottom:8px}
-.who-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;gap:12px;align-items:center;
-  padding:11px 12px 11px 10px;border-left:2px solid transparent;text-align:left;
-  background:transparent;border-top:0;border-right:0;border-bottom:0;width:100%;
-  transition:background .2s,border-color .2s}
+
+/* Three columns, always: mark | name over status | action. Nothing here may
+   wrap onto a second row -- the old four-child row declared only three columns
+   on a phone, so the challenge control dropped under the name and read as a
+   rendering bug. */
+.who-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:12px;
+  align-items:center;padding:10px 12px 10px 10px;
+  border-left:2px solid transparent;border-radius:2px;min-height:52px}
 .who-row.me{border-left-color:var(--rule-2);background:rgba(239,237,227,.05)}
-button.who-row{cursor:pointer}
-button.who-row:hover:not(:disabled){background:rgba(239,237,227,.09)}
-button.who-row:disabled{cursor:default;opacity:.42}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--chalk-dim);opacity:.32;flex:none}
+
+.who-mark{width:24px;height:24px;overflow:visible;display:block;flex:none}
+.who-mark path{fill:none;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;
+  filter:url(#chalk)}
+
+/* Presence dot. Green and gently pulsing when someone is actually reachable,
+   dim and still when they are not -- the status word beside it carries the
+   meaning, the dot just makes it scannable. */
+.dot{width:8px;height:8px;border-radius:50%;background:var(--chalk-dim);opacity:.35;flex:none}
 .dot.on{background:#63D69B;opacity:1;box-shadow:0 0 7px rgba(99,214,155,.75);
   animation:pulse 2.6s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.55}}
-.presence{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;
-  letter-spacing:.16em;text-transform:uppercase;color:var(--chalk-dim);white-space:nowrap}
+
+.who-id{display:flex;flex-direction:column;gap:3px;min-width:0}
+.who-name{font-family:var(--display);font-size:21px;line-height:1;text-transform:uppercase;
+  letter-spacing:.02em;font-weight:400;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who-state{display:flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--chalk-dim);white-space:nowrap}
+
+/* The one thing on this card you can act on, so it looks like a button and is
+   a full-size tap target rather than a pill riding along inside a list row. */
+.who-go{background:var(--chalk);color:#16322B;border:0;border-radius:2px;
+  padding:11px 14px;cursor:pointer;white-space:nowrap;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  font-weight:700;min-height:40px;transition:opacity .15s}
+.who-go:hover{opacity:.86}
+.who-go:active{opacity:.72}
+
 .card{border:1px solid var(--rule);border-radius:2px;padding:16px}
 .card+.card{margin-top:10px}
 .card h3{font-family:var(--mono);font-size:11px;letter-spacing:.3em;text-transform:uppercase;
@@ -53,6 +78,8 @@ button.who-row:disabled{cursor:default;opacity:.42}
 .banner{border:1px solid var(--rule-2);border-radius:2px;padding:14px 16px;margin-bottom:16px;
   background:rgba(239,237,227,.06);display:flex;flex-wrap:wrap;gap:12px;
   align-items:center;justify-content:space-between}
+.banner .choices{flex:1 1 auto;justify-content:flex-end}
+.banner .act{flex:1 1 auto;min-width:104px;text-align:center;min-height:42px}
 .banner-text{font-family:var(--mono);font-size:12px;letter-spacing:.08em;line-height:1.6}
 .banner-text b{font-family:var(--display);font-size:19px;font-weight:400;letter-spacing:.02em;
   text-transform:uppercase}
@@ -78,8 +105,10 @@ button.who-row:disabled{cursor:default;opacity:.42}
 
 @media (max-width:560px){
   .code-input{font-size:24px;letter-spacing:.3em;padding-left:16px}
-  .who-row{grid-template-columns:22px minmax(0,1fr) auto;gap:9px}
-  .who-row .presence span{display:none}
+  /* keep all three columns and keep the status readable; only tighten */
+  .who-row{gap:10px;padding:9px 10px 9px 8px}
+  .who-name{font-size:19px}
+  .who-go{padding:11px 12px;font-size:10px;letter-spacing:.1em}
 }
 
 /* ---------- admin ---------- */
@@ -234,4 +263,32 @@ button.who-row:disabled{cursor:default;opacity:.42}
   .seats{margin-bottom:8px;padding:8px 6px}
   .play-top{margin-bottom:8px}
   .play-actions{margin-top:10px}
+}
+
+/* ---------- lobby + welcome on small screens ---------- */
+
+@media (max-width:560px){
+  /* An incoming challenge is a decision, so give it room: message on its own
+     line, then two full-width choices that are hard to mis-tap. */
+  .banner{flex-direction:column;align-items:stretch;gap:10px;padding:13px 14px}
+  .banner .choices{justify-content:stretch}
+  .banner .act{flex:1 1 0;min-width:0}
+
+  /* The welcome bar used to break "WELCOME BACK" over two lines and drop the
+     switch button onto a row of its own. Two columns and the switch becomes a
+     compact control beside the score instead. */
+  .welcome{grid-template-columns:auto minmax(0,1fr) auto;gap:11px;padding:12px 13px;
+    row-gap:8px}
+  .welcome-hi{font-size:9.5px;letter-spacing:.2em;white-space:nowrap}
+  .welcome-name{font-size:26px}
+  .welcome-stat{font-size:9px}
+  .welcome-stat b{font-size:21px}
+  .welcome-switch{grid-column:1 / -1;justify-self:stretch;text-align:center;padding:10px}
+}
+
+@media (max-width:365px){
+  /* Below this the score and the name fight for the same row; the score is the
+     less urgent of the two, and it is repeated in the standings just below. */
+  .welcome-stat{display:none}
+  .welcome{grid-template-columns:auto minmax(0,1fr)}
 }

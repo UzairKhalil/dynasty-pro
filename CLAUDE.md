@@ -124,6 +124,15 @@ for the same reason: the turn indicator used to sit *below* the board, which on
 a 390px viewport put it 368px past the board's top edge, so you could never see
 the squares and whose turn it was at once.
 
+The lobby's challenge rows follow the same rule: `.who-row` is **three columns,
+declared once** — mark | name over status | action — and no breakpoint may
+re-declare it with fewer. It used to be a single clickable row with the action
+as a fourth child while the phone breakpoint declared only three columns, so
+the challenge control wrapped under the name and looked broken. The action is
+now a real `<button>`, which is also a clearer tap target than a list row that
+happens to be clickable, and the status word stays visible — a bare dot with no
+label says nothing.
+
 Under 560px wide, or under 700px tall, the masthead is hidden during a game and
 the welcome bar is dropped — roughly 110px the board needs more than the
 wordmark does. "← Lobby" carries the navigation. Verified at 360×640, 390×780,

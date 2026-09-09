@@ -47,24 +47,30 @@ export default function Lobby({
             const isMe = p.id === me;
             const busy = Boolean(state.busy);
             const reachable = online && state.online && !isMe && !busy && !outgoing;
-            const Row = reachable ? 'button' : 'div';
+            const status = isMe ? 'you'
+              : busy ? 'in a game'
+              : state.online ? 'online' : 'away';
+
+            // Three columns, always: mark | name over status | action. The row
+            // used to be one big button with the action as a fourth child,
+            // which on a phone wrapped onto its own line under the name and
+            // read as a bug. A real button is also a clearer tap target than
+            // a list row that happens to be clickable.
             return (
-              <Row
-                key={p.id}
-                className={'who-row' + (isMe ? ' me' : '')}
-                {...(reachable
-                  ? { type: 'button', onClick: () => onChallenge(p.id), title: `Challenge ${p.name}` }
-                  : {})}
-              >
-                <Mark id={p.id} className="seat-mark" />
-                <span className="seat-name" style={{ color: p.color }}>{p.name}</span>
-                <span className="presence">
-                  <Dot on={isMe || state.online} />
-                  <span>{isMe ? 'you' : busy ? 'in a game' : state.online ? 'online' : 'away'}</span>
+              <div key={p.id} className={'who-row' + (isMe ? ' me' : '')}>
+                <Mark id={p.id} className="who-mark" />
+                <span className="who-id">
+                  <span className="who-name" style={{ color: p.color }}>{p.name}</span>
+                  <span className="who-state">
+                    <Dot on={isMe || state.online} />{status}
+                  </span>
                 </span>
-                {/* an empty pill still paints its border, so render nothing */}
-                {reachable ? <span className="pill">challenge</span> : <span />}
-              </Row>
+                {reachable && (
+                  <button type="button" className="who-go" onClick={() => onChallenge(p.id)}>
+                    Challenge
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
