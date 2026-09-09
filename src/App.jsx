@@ -3,6 +3,7 @@ import ChalkDefs from './components/ChalkDefs.jsx';
 import CodeEntry from './components/CodeEntry.jsx';
 import Lobby from './components/Lobby.jsx';
 import Admin from './components/Admin.jsx';
+import Welcome from './components/Welcome.jsx';
 import Board from './components/Board.jsx';
 import Seats from './components/Seats.jsx';
 import { Standings, HeadToHead, GameLog } from './components/Panels.jsx';
@@ -296,6 +297,8 @@ export default function App() {
         </div>
       </header>
 
+      <Welcome me={me} ledger={ledger} onSwitch={signOut} />
+
       <div className="cols">
         <section>
           {session ? (
@@ -335,7 +338,6 @@ export default function App() {
         <span id="note">{footNote}</span>
         <span className="choices">
           {admin && <span className="admin-tag">admin</span>}
-          <button className="act ghost" onClick={signOut}>Not {P[me].name}?</button>
         </span>
       </div>
     </div>

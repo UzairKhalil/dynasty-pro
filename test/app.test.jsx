@@ -86,6 +86,73 @@ describe('code entry', () => {
 
 /* ------------------------------------------------------------------ */
 
+describe('welcome bar', () => {
+  it('names the signed-in player at the top, in their own colour', async () => {
+    await boot(UZAIR.code);
+    const bar = document.querySelector('.welcome');
+    expect(bar).toBeTruthy();
+    const name = bar.querySelector('.welcome-name');
+    expect(name.textContent).toMatch(/^Uzair/);
+    expect(name.getAttribute('style')).toContain('--uzair');
+  });
+
+  it('sits above the game columns, not buried in the footer', async () => {
+    await boot();
+    const bar = document.querySelector('.welcome');
+    const cols = document.querySelector('.cols');
+    // DOCUMENT_POSITION_FOLLOWING === the columns come after the bar
+    expect(bar.compareDocumentPosition(cols) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('greets a new player and welcomes a returning one back', async () => {
+    await boot();
+    expect(document.querySelector('.welcome-hi').textContent).toBe('Welcome');
+    expect(document.querySelector('.welcome-stat').textContent).toMatch(/first game/i);
+
+    await startDuel();
+    await tap(0); await tap(3); await tap(1); await tap(4); await tap(2);
+    fireEvent.click(screen.getByRole('button', { name: /lobby/i }));
+    await act(async () => { await Promise.resolve(); });
+
+    expect(document.querySelector('.welcome-hi').textContent).toBe('Welcome back');
+    expect(document.querySelector('.welcome-stat').textContent).toMatch(/3points · 1st of four/);
+  });
+
+  it('flags the admin seat and only the admin seat', async () => {
+    await boot(UZAIR.code);
+    expect(document.querySelector('.welcome-name .admin-tag')).toBeTruthy();
+    cleanup();
+    window.localStorage.clear();
+    await boot(MARYAM.code);
+    expect(document.querySelector('.welcome-name .admin-tag')).toBeNull();
+  });
+
+  it('names each player correctly, so nobody plays as a sibling by mistake', async () => {
+    for (const p of PLAYERS) {
+      cleanup();
+      window.localStorage.clear();
+      await boot(p.code);
+      expect(document.querySelector('.welcome-name').textContent).toMatch(new RegExp(`^${p.name}`));
+    }
+  });
+
+  it('switches seat from the bar and returns to the gate', async () => {
+    await boot(UZAIR.code);
+    fireEvent.click(within(document.querySelector('.welcome'))
+      .getByRole('button', { name: /not uzair\?/i }));
+    await act(async () => { await Promise.resolve(); });
+    expect(document.querySelector('.gate')).toBeTruthy();
+    expect(document.querySelector('.welcome')).toBeNull();
+  });
+
+  it('is absent before anyone has signed in', () => {
+    render(<App />);
+    expect(document.querySelector('.welcome')).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
 describe('lobby', () => {
   it('shows all four players with a presence dot', async () => {
     await boot();
