@@ -1,41 +1,51 @@
+// Dynasty — Realtime Database security rules.
+//
+// Paste this whole file into Firebase console -> Realtime Database -> Rules.
+// Firebase's rules format allows these // comments; plain JSON does not, which
+// is why nothing in the build parses this file. It is a paste source.
+//
+// Dynasty has no authentication: it is a four-person game on a static site, and
+// the player codes live in the bundle. These rules therefore cannot say WHO is
+// writing. What they CAN do is constrain WHAT gets written, so a stray client
+// or a bad deploy cannot corrupt the shape of the data or let the database grow
+// without bound.
+//
+// If you want real per-player permissions later, turn on Firebase Anonymous
+// Auth, map each uid to a player once, and gate these writes on that uid.
 {
   "rules": {
-    "_comment": [
-      "Dynasty has no authentication: it is a four-person game on a static site,",
-      "and the player codes live in the bundle. These rules therefore cannot say",
-      "WHO is writing. What they can do is constrain WHAT can be written, so a",
-      "stray client or a bad deploy cannot corrupt the shape of the data or let",
-      "the database grow without bound.",
-      "",
-      "If you want real per-player permissions later, turn on Firebase Anonymous",
-      "Auth, map each uid to a player once, and gate writes on that uid instead."
-    ],
 
+    // Who is at the board. Written by every client for itself, and cleared by
+    // onDisconnect() when a tab closes — which is what keeps the online dots
+    // honest rather than leaving ghosts behind.
     "presence": {
       ".read": true,
       "$player": {
         ".write": true,
         ".validate": "newData.hasChildren(['online', 'at'])",
         "online": { ".validate": "newData.isBoolean()" },
-        "at":     { ".validate": "newData.isNumber() || newData.val() == now" },
-        "busy":   { ".validate": "newData.isString() || newData.val() == null" },
+        "at":     { ".validate": "newData.isNumber()" },
+        "busy":   { ".validate": "newData.isString()" },
         "$other": { ".validate": false }
       }
     },
 
+    // One pending challenge per player. Removed on accept, decline or cancel.
     "invites": {
       "$player": {
         ".read": true,
         ".write": true,
-        ".validate": "!newData.exists() || newData.hasChildren(['matchId', 'from'])",
+        ".validate": "newData.hasChildren(['matchId', 'from'])",
         "matchId": { ".validate": "newData.isString() && newData.val().length < 64" },
         "from":    { ".validate": "newData.isString() && newData.val().length < 32" },
         "mode":    { ".validate": "newData.val() == 'duel' || newData.val() == 'free'" },
-        "at":      { ".validate": "newData.isNumber() || newData.val() == now" },
+        "at":      { ".validate": "newData.isNumber()" },
         "$other":  { ".validate": false }
       }
     },
 
+    // Live boards. The client sweeps entries older than 24h whenever it creates
+    // an invite, so this cannot grow without bound.
     "matches": {
       ".read": true,
       "$match": {
@@ -45,6 +55,7 @@
           ".validate": "newData.val().matches(/^(pending|active|declined|cancelled|done)$/)"
         },
         "game": {
+          // The board is one char per cell, so 36 is the 6x6 maximum.
           "cells": { ".validate": "newData.isString() && newData.val().length <= 36" },
           "turn":  { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 4" },
           "size":  { ".validate": "newData.val() == 3 || newData.val() == 6" }
@@ -52,6 +63,9 @@
       }
     },
 
+    // The shared ledger: an append-only list of finished games. Standings are
+    // folded from this on each client, so no total is ever written and two
+    // devices finishing at once cannot clobber each other.
     "games": {
       ".read": true,
       ".write": true,
@@ -59,7 +73,7 @@
         ".validate": "newData.hasChildren(['players', 'mode', 'at'])",
         "mode":   { ".validate": "newData.val() == 'duel' || newData.val() == 'free'" },
         "kind":   { ".validate": "newData.val().matches(/^(local|solo|online)$/)" },
-        "winner": { ".validate": "newData.isString() || newData.val() == null" },
+        "winner": { ".validate": "newData.isString()" },
         "at":     { ".validate": "newData.isNumber()" }
       }
     }

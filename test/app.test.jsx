@@ -5,6 +5,18 @@ import App from '../src/App.jsx';
 import { PLAYERS, P, IDS } from '../src/data/players.js';
 import { KEY } from '../src/net/store.js';
 
+// The build now ships a real Firebase config, so without this every test in
+// this file would open a socket to the family's live database and assert
+// against whatever happened to be in it. Forcing the offline path keeps these
+// tests hermetic and deterministic; the cloud path is covered against a fake
+// in storage.test.js.
+vi.mock('../src/net/firebase.js', () => ({
+  config: {},
+  isConfigured: () => false,
+  connect: async () => null,
+  watchConnection: async (cb) => { cb(false); return () => {}; }
+}));
+
 const UZAIR = PLAYERS.find((p) => p.id === 'uzair');
 const MARYAM = PLAYERS.find((p) => p.id === 'maryam');
 
@@ -170,7 +182,7 @@ describe('lobby', () => {
     expect(screen.getByRole('button', { name: /all four/i })).toBeTruthy();
   });
 
-  it('says plainly that online play is off when no service is configured', async () => {
+  it('says plainly that online play is off when no realtime service is reachable', async () => {
     await boot();
     expect(screen.getByText(/online play is off/i)).toBeTruthy();
     expect(document.querySelectorAll('button.who-row')).toHaveLength(0);

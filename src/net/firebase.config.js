@@ -17,19 +17,10 @@ export const defaults = {
   projectId: 'khalil-a67e5',
   appId: '1:789078571297:web:a602ade05512712b35a660',
 
-  // ---------------------------------------------------------------------
-  // REQUIRED FOR ONLINE PLAY — still empty.
-  //
-  // The config Firebase hands you only includes databaseURL once a Realtime
-  // Database actually exists. Create one at
-  //   console.firebase.google.com -> Build -> Realtime Database -> Create
-  // then paste its URL here. It looks like one of:
-  //   https://khalil-a67e5-default-rtdb.firebaseio.com              (us-central1)
-  //   https://khalil-a67e5-default-rtdb.<region>.firebasedatabase.app
-  //
-  // Don't guess the region — copy the URL the console shows you. A wrong URL
-  // is worse than an empty one: the app would think online play is available
-  // and then fail to connect.
-  // ---------------------------------------------------------------------
-  databaseURL: ''
+  // Created 2026-09-09 in Singapore (asia-southeast1), chosen because the
+  // players are in South Asia: ~100-200ms round trip versus ~400ms from
+  // us-central1, which is the difference between a move landing instantly and
+  // landing visibly late. A Realtime Database's region is permanent, so this
+  // cannot be changed without creating a new database.
+  databaseURL: 'https://khalil-a67e5-default-rtdb.asia-southeast1.firebasedatabase.app'
 };

@@ -1,7 +1,62 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { open, KEY, CAP } from '../src/net/store.js';
-import { isConfigured, config } from '../src/net/firebase.js';
+import { connect, isConfigured } from '../src/net/firebase.js';
+
+// The build ships a real Firebase config, so an unmocked open() here would talk
+// to the family's live database. connect() is mocked instead: null by default
+// (the offline path), or a fake in-memory Realtime Database when a test wants
+// to exercise the cloud path. Neither touches the network.
+vi.mock('../src/net/firebase.js', () => ({
+  config: { apiKey: 'test', databaseURL: 'https://example.invalid' },
+  isConfigured: vi.fn(() => true),
+  connect: vi.fn(async () => null),
+  watchConnection: vi.fn(async (cb) => { cb(false); return () => {}; })
+}));
+
+/**
+ * A minimal stand-in for firebase/database: enough of ref/push/set/update/
+ * remove/onValue/get for store.js, backed by a plain object.
+ */
+function fakeDatabase() {
+  const root = {};
+  const listeners = [];
+  let seq = 0;
+
+  const split = (path) => path.split('/').filter(Boolean);
+  const readAt = (path) => split(path).reduce((node, k) => (node == null ? undefined : node[k]), root);
+  const writeAt = (path, value) => {
+    const parts = split(path);
+    const last = parts.pop();
+    let node = root;
+    for (const k of parts) node = (node[k] = node[k] || {});
+    if (value === null || value === undefined) delete node[last];
+    else node[last] = value;
+  };
+  const emit = () => listeners.forEach(({ path, cb }) =>
+    cb({ val: () => (readAt(path) === undefined ? null : readAt(path)) }));
+
+  const api = {
+    ref: (_db, path = '') => ({ path }),
+    push: (node) => ({ path: `${node.path}/k${++seq}` }),
+    set: async (node, value) => { writeAt(node.path, value); emit(); },
+    update: async (node, value) => {
+      writeAt(node.path, { ...(readAt(node.path) || {}), ...value });
+      emit();
+    },
+    remove: async (node) => { writeAt(node.path, null); emit(); },
+    get: async (node) => ({ val: () => readAt(node.path) ?? null }),
+    onValue: (node, cb) => {
+      const entry = { path: node.path, cb };
+      listeners.push(entry);
+      cb({ val: () => (readAt(node.path) === undefined ? null : readAt(node.path)) });
+      return () => listeners.splice(listeners.indexOf(entry), 1);
+    },
+    onDisconnect: () => ({ set: async () => {}, remove: async () => {} }),
+    serverTimestamp: () => Date.now()
+  };
+  return { db: {}, api, root };
+}
 import { encodeCells, decodeCells, encodeGame, decodeGame } from '../src/net/match.js';
 import { createGame, applyMove } from '../src/game/rules.js';
 import { foldGames } from '../src/game/ledger.js';
@@ -15,6 +70,7 @@ const realLocal = Object.getOwnPropertyDescriptor(window, 'localStorage');
 beforeEach(() => {
   if (realLocal) Object.defineProperty(window, 'localStorage', realLocal);
   window.localStorage.clear();
+  connect.mockResolvedValue(null);          // offline unless a test says otherwise
 });
 afterEach(() => {
   if (realLocal) Object.defineProperty(window, 'localStorage', realLocal);
@@ -23,9 +79,13 @@ afterEach(() => {
 /* ------------------------------------------------------------------ */
 
 describe('backend selection', () => {
-  it('falls back to localStorage when no realtime service is configured', async () => {
-    expect(isConfigured()).toBe(false);
+  it('falls back to localStorage when the realtime service is unreachable', async () => {
     expect((await open()).source).toBe('local');
+  });
+
+  it('uses the cloud when a realtime connection is available', async () => {
+    connect.mockResolvedValue(fakeDatabase());
+    expect((await open()).source).toBe('cloud');
   });
 
   it('reports none when storage is blocked entirely, rather than pretending', async () => {
@@ -42,8 +102,63 @@ describe('backend selection', () => {
     expect(seen).toHaveLength(1);
   });
 
-  it('treats a half-filled Firebase config as not configured', () => {
-    expect(Boolean(config.apiKey && config.databaseURL)).toBe(isConfigured());
+  it('only claims to be configured when a databaseURL is actually present', () => {
+    // isConfigured gates online play; an apiKey alone must not turn it on.
+    expect(isConfigured()).toBe(true);      // the mock supplies both
+  });
+});
+
+describe('the cloud backend', () => {
+  it('appends a game under a generated key and pushes it to watchers', async () => {
+    const fake = fakeDatabase();
+    connect.mockResolvedValue(fake);
+    const store = await open();
+
+    let seen = [];
+    store.watch((g) => { seen = g; });
+    expect(seen).toEqual([]);
+
+    await store.append(entry('zahra'));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ winner: 'zahra', mode: 'duel' });
+    expect(Object.keys(fake.root.games)).toHaveLength(1);
+  });
+
+  it('carries the database key through as the game id, so one can be struck', async () => {
+    const fake = fakeDatabase();
+    connect.mockResolvedValue(fake);
+    const store = await open();
+    let seen = [];
+    store.watch((g) => { seen = g; });
+
+    await store.append(entry('uzair', 1));
+    await store.append(entry('maryam', 2));
+    expect(seen).toHaveLength(2);
+    expect(seen.every((g) => typeof g.id === 'string' && g.id.length)).toBe(true);
+
+    await store.remove(seen[0].id);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].winner).toBe('maryam');
+  });
+
+  it('mirrors the shared table to localStorage so a dropped link still shows it', async () => {
+    connect.mockResolvedValue(fakeDatabase());
+    const store = await open();
+    store.watch(() => {});
+    await store.append(entry('zain'));
+    expect(JSON.parse(window.localStorage.getItem(KEY))).toHaveLength(1);
+  });
+
+  it('clears the shared table for everyone', async () => {
+    const fake = fakeDatabase();
+    connect.mockResolvedValue(fake);
+    const store = await open();
+    let seen = [];
+    store.watch((g) => { seen = g; });
+    await store.append(entry());
+    await store.clear();
+    expect(seen).toEqual([]);
+    expect(fake.root.games).toBeUndefined();
   });
 });
 
