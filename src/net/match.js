@@ -24,6 +24,36 @@ export function encodeGame(game) {
   };
 }
 
+/**
+ * Should an incoming snapshot replace the board we are showing?
+ *
+ * Both arguments are `{ round, moves }`. The rule that matters:
+ *
+ *   a NEW round always wins, however few moves it has.
+ *
+ * Comparing move counts alone is the bug this exists to prevent. A fresh board
+ * has 0 moves; a just-finished one has 5. "Fewer moves means stale" therefore
+ * rejected the next game outright, and whichever player had not pressed the
+ * button was left staring at the previous result while the other played on.
+ *
+ * Within the SAME round, fewer moves really does mean stale — that is our own
+ * optimistic move not having round-tripped yet, and adopting would visibly
+ * un-play it.
+ */
+export function adopt(local, remote) {
+  if (!local) return true;
+  if (remote.round !== local.round) return remote.round > local.round;
+  return remote.moves >= local.moves;
+}
+
+/** Who has asked to play again. Cleared when the next round starts. */
+export function decodeRematch(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  return Object.fromEntries(
+    IDS.filter((id) => raw[id] === true).map((id) => [id, true])
+  );
+}
+
 export function decodeGame(raw) {
   if (!raw) return null;
   const mode = MODES[raw.mode] ? raw.mode : 'duel';
@@ -73,6 +103,7 @@ export async function invite(host, guest, mode = 'duel') {
   const game = createGame({ mode, order: [host, guest] });
   await api.set(node, {
     id, host, guest, mode, status: 'pending',
+    round: 0,
     game: encodeGame(game),
     createdAt: api.serverTimestamp(),
     updatedAt: api.serverTimestamp()
@@ -102,6 +133,42 @@ export async function cancel(matchId, guest) {
   await api.update(api.ref(db, `matches/${matchId}`), { status: 'cancelled' });
 }
 
+/**
+ * Says "I want to play again". The next round only starts once BOTH players
+ * have asked — otherwise one player restarts the board out from under the
+ * other, who is still looking at the result.
+ */
+export async function askRematch(matchId, playerId) {
+  const fb = await connect();
+  if (!fb) return;
+  const { db, api } = fb;
+  await api.update(api.ref(db, `matches/${matchId}/rematch`), { [playerId]: true });
+}
+
+export async function withdrawRematch(matchId, playerId) {
+  const fb = await connect();
+  if (!fb) return;
+  const { db, api } = fb;
+  await api.remove(api.ref(db, `matches/${matchId}/rematch/${playerId}`));
+}
+
+/**
+ * Starts the next round. Only the host calls this, so both clients cannot
+ * create two different boards at the same moment. `round` increments, which is
+ * what lets the other client tell a NEW game from a stale echo of an old one.
+ */
+export async function startRound(matchId, game, round) {
+  const fb = await connect();
+  if (!fb) return;
+  const { db, api } = fb;
+  await api.update(api.ref(db, `matches/${matchId}`), {
+    game: encodeGame(game),
+    round,
+    rematch: null,
+    updatedAt: api.serverTimestamp()
+  });
+}
+
 /** Pushes the authoritative game state. Only the player on turn should call this. */
 export async function pushGame(matchId, game, extra = {}) {
   const fb = await connect();
@@ -127,7 +194,12 @@ export async function watchMatch(matchId, cb) {
   const { db, api } = fb;
   return api.onValue(api.ref(db, `matches/${matchId}`), (snap) => {
     const raw = snap.val();
-    cb(raw ? { ...raw, game: decodeGame(raw.game) } : null);
+    cb(raw ? {
+      ...raw,
+      game: decodeGame(raw.game),
+      round: +raw.round || 0,
+      rematch: decodeRematch(raw.rematch)
+    } : null);
   });
 }
 

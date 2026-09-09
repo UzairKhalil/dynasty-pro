@@ -57,7 +57,7 @@ function fakeDatabase() {
   };
   return { db: {}, api, root };
 }
-import { encodeCells, decodeCells, encodeGame, decodeGame } from '../src/net/match.js';
+import { encodeCells, decodeCells, encodeGame, decodeGame, adopt, decodeRematch } from '../src/net/match.js';
 import { createGame, applyMove } from '../src/game/rules.js';
 import { foldGames } from '../src/game/ledger.js';
 import { IDS } from '../src/data/players.js';
@@ -325,5 +325,62 @@ describe('portability', () => {
     // entry chunk for every visitor, configured or not
     expect(src).not.toMatch(/^import .* from 'firebase/m);
     expect(src).toMatch(/await Promise\.all\(\[\s*import\('firebase\/app'\)/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe('adopting a remote board', () => {
+  const at = (round, moves) => ({ round, moves });
+
+  // THE regression this function exists for. One player pressing "play again"
+  // pushed a fresh board; the other client compared 0 moves against 5 and
+  // rejected it, so only the presser got a new game.
+  it('takes a new round even though it has fewer moves', () => {
+    expect(adopt(at(0, 5), at(1, 0))).toBe(true);
+    expect(adopt(at(3, 9), at(4, 0))).toBe(true);
+  });
+
+  it('ignores an older round entirely', () => {
+    expect(adopt(at(2, 0), at(1, 8))).toBe(false);
+  });
+
+  it('within a round, refuses a snapshot behind our own optimistic move', () => {
+    // we played locally and pushed; a stale echo must not un-play it
+    expect(adopt(at(1, 3), at(1, 2))).toBe(false);
+  });
+
+  it('within a round, accepts the opponent move that puts us level or ahead', () => {
+    expect(adopt(at(1, 2), at(1, 2))).toBe(true);
+    expect(adopt(at(1, 2), at(1, 3))).toBe(true);
+  });
+
+  it('adopts anything when there is nothing local yet', () => {
+    expect(adopt(null, at(0, 0))).toBe(true);
+    expect(adopt(undefined, at(7, 4))).toBe(true);
+  });
+
+  it('never gets stuck: a later round always wins from any state', () => {
+    for (let localMoves = 0; localMoves <= 9; localMoves++) {
+      expect(adopt(at(0, localMoves), at(1, 0))).toBe(true);
+    }
+  });
+});
+
+describe('rematch bookkeeping', () => {
+  it('reads only real players who actually agreed', () => {
+    expect(decodeRematch({ uzair: true, maryam: true })).toEqual({ uzair: true, maryam: true });
+    expect(decodeRematch({ uzair: true, maryam: false })).toEqual({ uzair: true });
+    expect(decodeRematch({ uzair: true, ghost: true })).toEqual({ uzair: true });
+  });
+
+  it('treats anything malformed as nobody having agreed', () => {
+    for (const junk of [null, undefined, 'yes', 42, []]) {
+      expect(decodeRematch(junk)).toEqual({});
+    }
+  });
+
+  it('a truthy-but-not-true value does not count as agreement', () => {
+    expect(decodeRematch({ uzair: 1, maryam: 'true' })).toEqual({});
   });
 });

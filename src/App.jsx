@@ -83,20 +83,31 @@ export default function App() {
         setOutgoing(null);
         setSession((prev) => {
           if (prev && prev.matchId === matchId) {
-            // Adopt the remote board unless we are strictly ahead, which means
-            // our own optimistic move has not round-tripped yet.
-            if (m.game.moves.length < prev.game.moves.length) return prev;
+            // A NEW round always wins. Only within the same round does the
+            // move count decide, and there it guards our own optimistic move
+            // against a stale echo. Comparing move counts alone used to reject
+            // the next game outright: a fresh board has 0 moves against a
+            // finished one's 5, so the player who did not press the button
+            // stayed staring at the old result.
+            const fresh = m.round > prev.round;
+            if (!matchApi.adopt({ round: prev.round, moves: prev.game.moves.length },
+                                { round: m.round, moves: m.game.moves.length })) {
+              return { ...prev, rematch: m.rematch };
+            }
             const last = m.game.moves[m.game.moves.length - 1];
             return {
               ...prev,
               game: m.game,
-              lastMove: last === undefined ? null : last,
-              id: m.game.moves.length === 0 ? nextId() : prev.id
+              round: m.round,
+              rematch: m.rematch,
+              lastMove: fresh ? null : (last === undefined ? null : last),
+              id: fresh ? nextId() : prev.id
             };
           }
           return {
             id: nextId(), kind: 'online', matchId, host: m.host, guest: m.guest,
-            bots: {}, game: m.game, lastMove: null, queue: emptyQueue(), starterFlip: 0
+            bots: {}, game: m.game, round: m.round, rematch: m.rematch,
+            lastMove: null, queue: emptyQueue(), starterFlip: 0
           };
         });
       } else if (m.status === 'declined' || m.status === 'cancelled') {
@@ -145,6 +156,30 @@ export default function App() {
     }, pause);
     return () => clearTimeout(t);
   }, [session, doMove]);
+
+  /* ---------------- rematch ---------------- */
+
+  // Once BOTH players have asked, exactly one of them creates the next board.
+  // The host is chosen arbitrarily but consistently, so the two clients cannot
+  // push two different boards in the same instant.
+  useEffect(() => {
+    const s = session;
+    if (!s || s.kind !== 'online' || !s.game.over || s.ended) return;
+    if (s.host !== me) return;
+    const agreed = s.game.order.every((id) => s.rematch && s.rematch[id]);
+    if (!agreed) return;
+    const round = (s.round || 0) + 1;
+    matchApi.startRound(s.matchId, createGame({
+      mode: s.game.mode, order: s.game.order, starterFlip: round
+    }), round);
+  }, [session, me]);
+
+  const withdrawRematch = useCallback(() => {
+    setSession((prev) => {
+      if (prev && prev.kind === 'online') matchApi.withdrawRematch(prev.matchId, me);
+      return prev;
+    });
+  }, [me]);
 
   /* ---------------- recording a finished game ---------------- */
 
@@ -204,9 +239,10 @@ export default function App() {
     setSession((prev) => {
       if (!prev) return prev;
       if (prev.kind === 'online') {
-        const game = createGame({ mode: prev.game.mode, order: prev.game.order, starterFlip: 1 });
-        matchApi.pushGame(prev.matchId, game);
-        return { ...prev, id: nextId(), game, lastMove: null };
+        // Ask, don't restart. The board only resets once the other player has
+        // asked too, so nobody has the result yanked away mid-read.
+        if (prev.game.over) matchApi.askRematch(prev.matchId, me);
+        return prev;
       }
       const order = prev.game.mode === 'duel' ? prev.queue.slice(0, 2) : prev.game.order;
       return {
@@ -303,7 +339,8 @@ export default function App() {
         <section>
           {session ? (
             <GameView session={session} me={me} onPlay={doMove} onNext={nextGame}
-                      onLeave={leaveGame} onUndo={undo} />
+                      onLeave={leaveGame} onUndo={undo}
+                      onWithdrawRematch={withdrawRematch} />
           ) : (
             <>
               <h2 className="panel-title">Choose a game</h2>
@@ -346,11 +383,22 @@ export default function App() {
 
 /* ---------------- the game screen ---------------- */
 
-function GameView({ session, me, onPlay, onNext, onLeave, onUndo }) {
+function GameView({ session, me, onPlay, onNext, onLeave, onUndo, onWithdrawRematch }) {
   const { game, kind, bots } = session;
+  const opponent = game.order.find((id) => id !== me);
+  const rematch = session.rematch || {};
+  const iAsked = Boolean(rematch[me]);
+  const theyAsked = Boolean(opponent && rematch[opponent]);
   const current = game.over ? null : game.order[game.turn];
   const myTurn = kind !== 'online' || current === me;
   const waiting = kind === 'online' && !game.over && !myTurn;
+
+  // Both players have to agree before the board resets, so say where that
+  // stands rather than leaving one of them wondering why nothing happened.
+  const rematchNote = kind !== 'online' || !opponent ? null
+    : theyAsked && !iAsked ? P[opponent].name + ' wants to play again'
+    : iAsked && !theyAsked ? 'Waiting for ' + P[opponent].name + ' to agree'
+    : null;
 
   let headline;
   let sub;
@@ -361,12 +409,12 @@ function GameView({ session, me, onPlay, onNext, onLeave, onUndo }) {
     headline = P[game.winner].name + ' wins';
     sub = kind === 'local' && game.mode === 'duel'
       ? 'Holds the board · next up ' + P[session.queue[0]].name + ' v ' + P[session.queue[1]].name
-      : 'Added to the ledger';
+      : rematchNote || 'Added to the ledger';
   } else if (game.over) {
     headline = 'Drawn';
     sub = kind === 'local' && game.mode === 'duel'
       ? 'A point each · next up ' + P[session.queue[0]].name + ' v ' + P[session.queue[1]].name
-      : 'A point each';
+      : rematchNote || 'A point each';
   } else if (waiting) {
     headline = P[current].name + '’s turn';
     sub = 'Waiting for their move';
@@ -407,9 +455,23 @@ function GameView({ session, me, onPlay, onNext, onLeave, onUndo }) {
       </div>
 
       <div className="play-actions">
-        {game.over
-          ? <button className="act" id="primary" onClick={onNext}>Next game</button>
-          : <button className="act ghost" id="primary" onClick={onNext}>Restart</button>}
+        {kind === 'online' && game.over && !session.ended ? (
+          iAsked
+            ? (
+              <button className="act ghost waiting-act" id="primary" onClick={onWithdrawRematch}>
+                Waiting for {P[opponent].name}<i className="waiting" />
+              </button>
+            )
+            : (
+              <button className="act" id="primary" onClick={onNext}>
+                {theyAsked ? 'Accept rematch' : 'Play again'}
+              </button>
+            )
+        ) : game.over ? (
+          <button className="act" id="primary" onClick={onNext}>Next game</button>
+        ) : (
+          <button className="act ghost" id="primary" onClick={onNext}>Restart</button>
+        )}
         {!game.over && kind !== 'online' && (
           <button className="act ghost" id="undo" onClick={onUndo}
                   disabled={game.moves.length === 0}>Undo</button>

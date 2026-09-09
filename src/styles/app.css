@@ -292,3 +292,9 @@
   .welcome-stat{display:none}
   .welcome{grid-template-columns:auto minmax(0,1fr)}
 }
+
+/* The "waiting for them" state is a real button — pressing it withdraws the
+   request — but it must not look like the primary action, or you will keep
+   pressing it expecting the game to start. */
+.waiting-act{display:inline-flex;align-items:center;justify-content:center;gap:2px}
+.waiting-act .waiting{margin-left:6px}

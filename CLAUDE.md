@@ -138,6 +138,22 @@ the welcome bar is dropped — roughly 110px the board needs more than the
 wordmark does. "← Lobby" carries the navigation. Verified at 360×640, 390×780,
 430×860, 820×660 and 1200×1000; the whole game fits one screen at every one.
 
+## Online rounds
+
+A match carries a **`round` counter**, and `adopt()` in `src/net/match.js` is
+what decides whether an incoming snapshot replaces the local board: a new round
+always wins, however few moves it has; within the same round, fewer moves means
+a stale echo of our own optimistic move and is refused. Comparing move counts
+alone is a real bug that shipped — a fresh board has 0 moves against a finished
+one's 5, so the player who did not press "play again" kept staring at the old
+result while the other played on.
+
+**Both players must agree before the next round starts.** Pressing "Play again"
+writes `rematch/{player}`; only when every seat has asked does the **host** (and
+only the host, so two clients cannot push two different boards at once) call
+`startRound()`, which sets the new game, increments `round` and clears
+`rematch` in one update. Pressing the waiting button withdraws the request.
+
 ## Storage
 
 `src/net/store.js` picks a backend at runtime: **cloud** (Firebase, shared by
