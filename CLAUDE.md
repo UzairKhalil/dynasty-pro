@@ -12,7 +12,7 @@ or two people online on separate devices.
 
     npm install
     npm run dev          # http://localhost:5173
-    npm test             # vitest, 202 assertions
+    npm test             # vitest, 220+ assertions
     npm run build        # -> dist/
 
 `npm run dev` with no `.env.local` runs in local-only mode: everything works
@@ -137,6 +137,28 @@ Under 560px wide, or under 700px tall, the masthead is hidden during a game and
 the welcome bar is dropped — roughly 110px the board needs more than the
 wordmark does. "← Lobby" carries the navigation. Verified at 360×640, 390×780,
 430×860, 820×660 and 1200×1000; the whole game fits one screen at every one.
+
+## Presence must be symmetric
+
+If Maryam can see Uzair online, Uzair must see Maryam online. Three rules in
+`src/net/presence.js` keep that true, each fixing a real asymmetry that shipped:
+
+- **The heartbeat re-asserts `online: true`, not just `at`.** A seat gets marked
+  offline behind its back — the same player's *other* tab or device closing
+  fires its `onDisconnect` on the shared record, and the admin can clear marks.
+  A heartbeat that only refreshed the timestamp never undid that, so the player
+  looked fine on their own screen and "away" on everyone else's, indefinitely.
+- **Freshness is judged on the server's clock** (`.info/serverTimeOffset`). `at`
+  is a server timestamp; comparing it with the viewer's `Date.now()` meant a
+  laptop running a minute fast saw every phone as stale, while the phones saw
+  the laptop as online.
+- **Staleness is re-checked every `TICK_MS`**, not only when someone writes, so
+  viewers converge instead of each holding whatever they last computed.
+
+Claims use `update()`, not `set()`, so a reconnect can't wipe `busy` mid-match.
+The admin's clear writes per player through one multi-path update: the rules
+grant writes at `/presence/$player` only, so the old `set()` on the whole
+collection was denied and the button silently did nothing.
 
 ## Online rounds
 
