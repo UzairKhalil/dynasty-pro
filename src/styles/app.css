@@ -298,3 +298,72 @@
    pressing it expecting the game to start. */
 .waiting-act{display:inline-flex;align-items:center;justify-content:center;gap:2px}
 .waiting-act .waiting{margin-left:6px}
+
+/* ---------- code screen notices ---------- */
+
+.gate-notice{font-family:var(--mono);font-size:11px;letter-spacing:.08em;line-height:1.6;
+  color:var(--chalk);border:1px solid var(--rule-2);border-left:2px solid var(--uzair);
+  background:rgba(239,237,227,.06);padding:10px 12px;margin:0 0 18px;border-radius:2px}
+.gate-privacy{margin-top:10px;font-size:10px;opacity:.8}
+
+/* ---------- sign-in history (admin) ----------
+   Cards, not a table: fourteen device fields in columns is unreadable on the
+   phone this page is most likely opened on. Details live behind <details>. */
+
+.history{max-width:760px;margin:0 auto}
+.history-top{width:auto}
+.history-title{font-family:var(--display);font-size:clamp(28px,6vw,40px);line-height:1;margin:4px 0 8px;
+  text-transform:uppercase;letter-spacing:.02em;font-weight:400}
+.history-lede{margin:0 0 18px}
+.history-card{margin-bottom:16px}
+.history-filter{margin:0 0 14px}
+
+.device-list,.login-list{list-style:none;margin:0;padding:0}
+.device-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:12px;align-items:center;
+  padding:9px 2px;border-bottom:1px solid var(--rule)}
+.device-row:last-child{border-bottom:0}
+.device-id{display:flex;flex-direction:column;gap:3px;min-width:0}
+.device-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--chalk-dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.device-seen{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--chalk-dim);white-space:nowrap}
+
+.login{border:1px solid var(--rule);border-left:2px solid var(--rule-2);border-radius:2px;
+  padding:12px 12px 10px;margin-bottom:8px;background:rgba(239,237,227,.03)}
+.login-out{opacity:.72;border-left-color:var(--rule)}
+.login-head{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:12px;align-items:center}
+.login-who{display:flex;flex-direction:column;gap:4px;min-width:0}
+.login-kind{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--chalk-dim)}
+.login-new{font-size:8.5px;letter-spacing:.14em;border:1px solid var(--uzair);color:var(--uzair);
+  border-radius:999px;padding:1px 6px}
+.login-when{text-align:right;font-family:var(--mono);white-space:nowrap}
+.login-when b{display:block;font-weight:400;font-size:11px;letter-spacing:.08em;color:var(--chalk)}
+.login-when i{display:block;font-style:normal;font-size:9.5px;letter-spacing:.06em;color:var(--chalk-dim);margin-top:3px}
+.login-device{font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--chalk);
+  margin:10px 0 0 38px;line-height:1.5;word-break:break-word}
+
+.login-more{margin:8px 0 0 38px}
+.login-more summary{cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--chalk-dim);padding:6px 0;list-style:none}
+.login-more summary::-webkit-details-marker{display:none}
+.login-more summary::before{content:'+ '}
+.login-more[open] summary::before{content:'– '}
+.login-more dl{margin:6px 0 2px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}
+.kv{min-width:0}
+.kv dt{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--chalk-dim)}
+.kv dd{margin:2px 0 0;font-family:var(--mono);font-size:11px;color:var(--chalk);word-break:break-word}
+.kv-wide{grid-column:1 / -1}
+.kv-wide dd{font-size:10px;color:var(--chalk-dim);line-height:1.5}
+
+@media (max-width:560px){
+  .login{padding:11px 10px 9px}
+  .login-head,.device-row{grid-template-columns:22px minmax(0,1fr) auto;gap:10px}
+  .login-device,.login-more{margin-left:32px}
+  .login-more dl{grid-template-columns:1fr 1fr;gap:8px 12px}
+  .history-filter .chip{padding:8px 9px}
+}
+@media (max-width:360px){
+  .login-when i{display:none}
+  .login-more dl{grid-template-columns:1fr}
+}

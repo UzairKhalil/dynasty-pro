@@ -76,6 +76,25 @@
         "winner": { ".validate": "newData.isString()" },
         "at":     { ".validate": "newData.isNumber()" }
       }
+    },
+
+    // Sign-in history for the admin page. Device details, never codes. Capped
+    // at 300 entries by the client after each write.
+    "logins": {
+      ".read": true,
+      ".write": true,
+      "$entry": {
+        ".validate": "newData.hasChildren(['player', 'kind', 'at'])",
+        "player":   { ".validate": "newData.isString() && newData.val().length < 32" },
+        "kind":     { ".validate": "newData.val() == 'in' || newData.val() == 'out'" },
+        "reason":   { ".validate": "newData.isString() && newData.val().length < 32" },
+        "at":       { ".validate": "newData.isNumber()" },
+        "deviceId": { ".validate": "newData.isString() && newData.val().length < 64" },
+        "device": {
+          ".validate": "newData.hasChildren()",
+          "ua": { ".validate": "newData.isString() && newData.val().length <= 400" }
+        }
+      }
     }
   }
 }

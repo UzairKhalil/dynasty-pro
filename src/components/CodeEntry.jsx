@@ -7,7 +7,7 @@ import ChalkDefs from './ChalkDefs.jsx';
  * anyone with devtools open — they exist so four people sharing a link land in
  * the right seat, nothing more.
  */
-export default function CodeEntry({ onEnter }) {
+export default function CodeEntry({ onEnter, notice = null }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const inputRef = useRef(null);
@@ -40,6 +40,11 @@ export default function CodeEntry({ onEnter }) {
 
       <div className="gate">
         <form className="gate-card" onSubmit={submit}>
+          {notice === 'idle' && (
+            <p className="gate-notice" role="status">
+              Signed out after 30 minutes without activity. Enter your code to carry on.
+            </p>
+          )}
           <h2>Who's playing?</h2>
           <p className="muted">Enter your five-digit player code to load your seat.</p>
           <input
@@ -61,6 +66,10 @@ export default function CodeEntry({ onEnter }) {
           <div className="gate-hint">
             <p className="muted">
               Lost your code? It's the same five digits every time — ask whoever set the board up.
+            </p>
+            <p className="muted gate-privacy">
+              Signing in records the time and basic device details — model, system, browser,
+              screen — for the admin. Seats sign out after 30 minutes idle.
             </p>
           </div>
         </form>

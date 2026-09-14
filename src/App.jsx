@@ -4,6 +4,10 @@ import CodeEntry from './components/CodeEntry.jsx';
 import Lobby from './components/Lobby.jsx';
 import Admin from './components/Admin.jsx';
 import Welcome from './components/Welcome.jsx';
+import History from './components/History.jsx';
+import useIdle from './hooks/useIdle.js';
+import { isExpired, readActive, writeActive } from './net/idle.js';
+import { recordLogin } from './net/logins.js';
 import Board from './components/Board.jsx';
 import Seats from './components/Seats.jsx';
 import { Standings, HeadToHead, GameLog } from './components/Panels.jsx';
@@ -28,8 +32,29 @@ const writeMe = (v) => {
 let seq = 0;
 const nextId = () => ++seq;
 
+// A remembered seat is only honoured if it was used in the last 30 minutes.
+// Checked here, before the first render, so a stale seat never flashes the
+// lobby before bouncing to the code screen.
+function initialSeat() {
+  const id = readMe();
+  if (!P[id]) return { me: null, idle: false };
+  if (isExpired(readActive())) {
+    writeMe(null);
+    writeActive(0);
+    return { me: null, idle: true };
+  }
+  return { me: id, idle: false };
+}
+
+const onHistoryHash = () =>
+  typeof window !== 'undefined' && window.location.hash === '#history';
+
 export default function App() {
-  const [me, setMe] = useState(() => (P[readMe()] ? readMe() : null));
+  const [start] = useState(initialSeat);
+  const [me, setMe] = useState(start.me);
+  const [signedOutBy, setSignedOutBy] = useState(start.idle ? 'idle' : null);
+  const [view, setView] = useState(() => (onHistoryHash() ? 'history' : 'lobby'));
+  const pushedHistory = useRef(false);
   const [store, setStore] = useState(null);
   const [games, setGames] = useState([]);
   const [presence, setPresence] = useState(presenceApi.offlineState());
@@ -299,16 +324,68 @@ export default function App() {
     presenceApi.clearAll();
   }, [me]);
 
-  function signOut() {
-    writeMe(null);
-    setMe(null);
+  const signIn = useCallback((id) => {
+    writeMe(id);
+    writeActive(Date.now());
+    setSignedOutBy(null);
+    setMe(id);
+    recordLogin(id, 'in');
+  }, []);
+
+  // `reason` arrives as a click event when this is wired straight to a button,
+  // so it is normalised rather than trusted — an event object must never reach
+  // the database.
+  const signOut = useCallback((reason) => {
+    const why = reason === 'idle' ? 'idle' : 'manual';
+    const who = me;
+    // Signing out must not strand an online opponent or leave a challenge ringing.
+    if (session && session.kind === 'online') matchApi.leave(session.matchId, who);
+    if (outgoing) matchApi.cancel(outgoing.matchId, outgoing.guest);
     setSession(null);
     setOutgoing(null);
-  }
+    writeMe(null);
+    writeActive(0);
+    setMe(null);
+    setView('lobby');
+    if (onHistoryHash()) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    setSignedOutBy(why === 'idle' ? 'idle' : null);
+    if (who) recordLogin(who, 'out', why);
+  }, [me, session, outgoing]);
+
+  useIdle({ enabled: Boolean(me), onExpire: () => signOut('idle') });
+
+  // The history page is a hash, not a path: base './' only holds because the
+  // app has no path router, and a hash keeps that true while still giving the
+  // phone's back button somewhere sensible to go.
+  useEffect(() => {
+    const sync = () => setView(onHistoryHash() ? 'history' : 'lobby');
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
+
+  const openHistory = useCallback(() => {
+    pushedHistory.current = true;
+    setView('history');
+    if (!onHistoryHash()) window.location.hash = 'history';
+  }, []);
+
+  const closeHistory = useCallback(() => {
+    setView('lobby');
+    if (pushedHistory.current) {
+      pushedHistory.current = false;
+      window.history.back();
+    } else if (onHistoryHash()) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, []);
 
   if (!me) {
-    return <CodeEntry onEnter={(id) => { writeMe(id); setMe(id); }} />;
+    return <CodeEntry onEnter={signIn} notice={signedOutBy} />;
   }
+
+  const showHistory = admin && view === 'history' && !session;
 
   const source = store ? store.source : 'local';
   const footNote = source === 'cloud'
@@ -320,7 +397,7 @@ export default function App() {
   return (
     <div className="wrap">
       <ChalkDefs />
-      <header className={'masthead' + (session ? ' compact' : '')}>
+      <header className={'masthead' + (session || showHistory ? ' compact' : '')}>
         <p className="eyebrow">Tic tac toe</p>
         <h1>Dynasty</h1>
         <p className="tagline">Four claimants. Nine squares. The throne changes hands weekly.</p>
@@ -333,8 +410,9 @@ export default function App() {
         </div>
       </header>
 
-      {!session && <Welcome me={me} ledger={ledger} onSwitch={signOut} />}
+      {!session && !showHistory && <Welcome me={me} ledger={ledger} onSwitch={signOut} />}
 
+      {showHistory ? <History onBack={closeHistory} /> : (
       <div className="cols">
         <section>
           {session ? (
@@ -349,7 +427,8 @@ export default function App() {
                      onCancel={cancelInvite} onLocal={startLocal} onSolo={startSolo} />
               {admin && (
                 <Admin me={me} source={source} gameCount={games.length} online={online}
-                       onWipe={wipeLedger} onClearPresence={clearPresence} />
+                       onWipe={wipeLedger} onClearPresence={clearPresence}
+                       onHistory={openHistory} />
               )}
             </>
           )}
@@ -370,6 +449,7 @@ export default function App() {
           </div>
         </section>
       </div>
+      )}
 
       <div className="foot">
         <span id="note">{footNote}</span>

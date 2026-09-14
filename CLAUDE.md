@@ -12,7 +12,7 @@ or two people online on separate devices.
 
     npm install
     npm run dev          # http://localhost:5173
-    npm test             # vitest, 116 assertions
+    npm test             # vitest, 202 assertions
     npm run build        # -> dist/
 
 `npm run dev` with no `.env.local` runs in local-only mode: everything works
@@ -153,6 +153,37 @@ writes `rematch/{player}`; only when every seat has asked does the **host** (and
 only the host, so two clients cannot push two different boards at once) call
 `startRound()`, which sets the new game, increments `round` and clears
 `rematch` in one update. Pressing the waiting button withdraws the request.
+
+## Sessions and sign-in history
+
+**A seat signs out after 30 minutes idle** (`IDLE_MS`, `src/net/idle.js`). The
+last-active time lives in `localStorage`, not memory: a phone asleep in a pocket
+freezes timers, so an in-memory countdown would never fire, and a seat
+remembered from yesterday must ask for the code on the next visit. So it is
+checked in three places — before the first render (`initialSeat()`, so a stale
+seat never flashes the lobby), on wake (`visibilitychange`/`focus`/`pageshow`),
+and on a 15s interval. Only the player's own input counts as activity; a bot or
+an opponent moving does not. The expiry check runs **before** an input is
+counted, so the first tap after an hour away signs out instead of passing as
+proof of life. An idle sign-out leaves any online match and cancels any pending
+challenge, so nobody is stranded.
+
+**Every sign-in and sign-out is recorded** to `/logins` (`src/net/logins.js`)
+with what the browser reports about the device — `parseUA()` in
+`src/net/device.js`, plus User-Agent Client Hints where available — and a random
+per-device id so the admin can tell devices apart. What browsers will and won't
+say is the ceiling: Android Chrome names the model, an iPhone is only ever
+"iPhone", and nothing exposes the owner's device name or an IP (an IP would need
+a third-party lookup, which the app deliberately does not call). Codes are
+never stored — they map one-to-one to the player, who is. Firebase rejects
+`undefined` anywhere in a write, so entries go through `clean()`. Capped at 300.
+The code screen tells people sign-ins are recorded.
+
+The admin page is **`#history`, a hash, not a path** — that keeps `base: './'`
+valid while still giving a phone's back button somewhere to go. Like the rest of
+the admin role it is a screen, not a lock: `/logins` is stored without
+authentication. If the database rules do not include `/logins`, writes fall back
+to this device and the page says so rather than hanging on "Loading…".
 
 ## Storage
 

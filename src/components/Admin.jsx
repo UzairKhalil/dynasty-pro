@@ -10,7 +10,7 @@ import { P } from '../data/players.js';
  * bundle alongside the codes, so it prevents accidents rather than intrusion.
  * The database rules in firebase.rules.json are what actually constrain writes.
  */
-export default function Admin({ me, source, gameCount, onWipe, onClearPresence, online }) {
+export default function Admin({ me, source, gameCount, onWipe, onClearPresence, online, onHistory }) {
   const [armed, setArmed] = useState(null);
 
   function press(key, action) {
@@ -28,6 +28,9 @@ export default function Admin({ me, source, gameCount, onWipe, onClearPresence, 
       <h3>Admin · {P[me].name}<span className="admin-tag">full control</span></h3>
 
       <div className="choices">
+        {onHistory && (
+          <button className="act" onClick={onHistory}>Sign-in history</button>
+        )}
         <button className="act ghost" onClick={() => press('wipe', onWipe)}>
           {armed === 'wipe' ? 'Tap again to wipe all records' : `Wipe ledger (${gameCount})`}
         </button>
