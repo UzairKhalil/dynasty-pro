@@ -311,13 +311,23 @@ describe('logins storage', () => {
 /* ================================================================== */
 
 describe('the sign-in history page', () => {
+  // There is deliberately no button for it: the admin types .../#history.
   async function openHistory() {
-    fireEvent.click(screen.getByRole('button', { name: /sign-in history/i }));
-    await flush();
+    await act(async () => {
+      window.location.hash = 'history';
+      await new Promise((r) => setTimeout(r, 20));
+    });
     await flush();
   }
 
-  it('is offered to the admin and opens as its own page', async () => {
+  it('has no button anywhere — it is reached by URL only', async () => {
+    await boot(UZAIR.code);
+    await flush();
+    expect(screen.queryByRole('button', { name: /history/i })).toBeNull();
+    expect(document.querySelector('.admin-card').textContent).not.toMatch(/history/i);
+  });
+
+  it('opens as its own page for the admin at #history', async () => {
     await boot(UZAIR.code);
     await flush();
     await openHistory();
@@ -328,15 +338,47 @@ describe('the sign-in history page', () => {
     expect(document.querySelector('.welcome')).toBeNull();
   });
 
-  it('lists the admin’s own sign-in with its device', async () => {
+  it('lists the admin’s own sign-in as a table row with its device', async () => {
     await boot(UZAIR.code);
     await flush();
     await openHistory();
-    const first = document.querySelector('.login');
+    const first = document.querySelector('.login-table tbody tr.login');
     expect(first.textContent).toMatch(/Uzair/);
     expect(first.textContent).toMatch(/signed in/);
     expect(first.querySelector('.login-device').textContent.length).toBeGreaterThan(0);
-    expect(first.querySelector('details')).toBeTruthy();
+  });
+
+  it('gives every device detail its own column', async () => {
+    await boot(UZAIR.code);
+    await flush();
+    await openHistory();
+    const heads = [...document.querySelectorAll('.login-table thead th')].map((th) => th.textContent);
+    for (const h of ['Player', 'When', 'Event', 'Device', 'Type', 'Model', 'System', 'Browser',
+      'Screen', 'Window', 'Touch', 'Cores', 'Memory', 'Network', 'Language', 'Time zone',
+      'Device id', 'User agent']) {
+      expect(heads).toContain(h);
+    }
+    // and each row has a cell under every heading
+    const row = document.querySelector('.login-table tbody tr');
+    expect(row.children).toHaveLength(heads.length);
+  });
+
+  it('lists each device once in the devices-seen table', async () => {
+    await boot(UZAIR.code);
+    await flush();
+    await openHistory();
+    expect(document.querySelectorAll('.devices-table tbody tr')).toHaveLength(1);
+  });
+
+  it('scrolls the table inside its own box and pins the player column', async () => {
+    const fs = await import('node:fs');
+    const css = fs.readFileSync('src/styles/app.css', 'utf8');
+    expect(css).toMatch(/\.table-wrap\{[^}]*overflow-x:auto/);
+    expect(css).toMatch(/\.data-table \.sticky\{[^}]*position:sticky;left:0/);
+    await boot(UZAIR.code);
+    await flush();
+    await openHistory();
+    expect(document.querySelector('.login-table tbody td.sticky .who-name')).toBeTruthy();
   });
 
   it('marks only the first sign-in from a device as new', async () => {
@@ -348,7 +390,7 @@ describe('the sign-in history page', () => {
     fireEvent.click(screen.getByRole('button', { name: /take my seat/i }));
     await flush();
     await openHistory();
-    expect(document.querySelectorAll('.login')).toHaveLength(3);        // in, out, in
+    expect(document.querySelectorAll('.login-table tbody tr.login')).toHaveLength(3);  // in, out, in
     expect(document.querySelectorAll('.login-new')).toHaveLength(1);
   });
 
@@ -363,7 +405,7 @@ describe('the sign-in history page', () => {
     expect(names.every((n) => n === 'Zain')).toBe(true);
   });
 
-  it('goes back to the lobby', async () => {
+  it('goes back to the lobby and drops the hash', async () => {
     await boot(UZAIR.code);
     await flush();
     await openHistory();
@@ -371,6 +413,14 @@ describe('the sign-in history page', () => {
     await flush();
     expect(document.getElementById('history')).toBeNull();
     expect(document.querySelector('.cols')).toBeTruthy();
+    expect(window.location.hash).toBe('');
+  });
+
+  it('lands the admin on the page when the URL is opened before signing in', async () => {
+    window.location.hash = 'history';
+    await boot(UZAIR.code);
+    await flush();
+    expect(document.getElementById('history')).toBeTruthy();
   });
 
   it('clears only on the second press', async () => {
@@ -385,9 +435,11 @@ describe('the sign-in history page', () => {
     expect(document.querySelectorAll('.login')).toHaveLength(0);
   });
 
-  it('is not offered to anyone else, even by typing the address', async () => {
+  it('shows anyone else the ordinary lobby, even at the address', async () => {
     await boot(MARYAM.code);
-    expect(screen.queryByRole('button', { name: /sign-in history/i })).toBeNull();
+    await openHistory();
+    expect(document.getElementById('history')).toBeNull();
+    expect(document.querySelector('.cols')).toBeTruthy();
     cleanup();
     window.location.hash = 'history';
     window.localStorage.setItem(ME_KEY, 'maryam');

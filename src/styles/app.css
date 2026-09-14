@@ -307,63 +307,60 @@
 .gate-privacy{margin-top:10px;font-size:10px;opacity:.8}
 
 /* ---------- sign-in history (admin) ----------
-   Cards, not a table: fourteen device fields in columns is unreadable on the
-   phone this page is most likely opened on. Details live behind <details>. */
+   Tables, by the owner's choice. They are wider than any phone, so each one
+   scrolls sideways inside its own box — the page body never does — and the
+   Player column is pinned so every row stays attributable mid-scroll. */
 
-.history{max-width:760px;margin:0 auto}
+.history{max-width:none}
 .history-top{width:auto}
 .history-title{font-family:var(--display);font-size:clamp(28px,6vw,40px);line-height:1;margin:4px 0 8px;
   text-transform:uppercase;letter-spacing:.02em;font-weight:400}
 .history-lede{margin:0 0 18px}
-.history-card{margin-bottom:16px}
-.history-filter{margin:0 0 14px}
+.history-h{margin:22px 0 10px}
+.history-bar{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px}
+.history-bar .history-h{margin-bottom:0}
+.history-filter{margin:0 0 10px}
 
-.device-list,.login-list{list-style:none;margin:0;padding:0}
-.device-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:12px;align-items:center;
-  padding:9px 2px;border-bottom:1px solid var(--rule)}
-.device-row:last-child{border-bottom:0}
-.device-id{display:flex;flex-direction:column;gap:3px;min-width:0}
-.device-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--chalk-dim);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.device-seen{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
-  color:var(--chalk-dim);white-space:nowrap}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+  border:1px solid var(--rule);border-radius:2px;margin-bottom:10px;max-width:100%}
+.table-wrap:focus-visible{outline:2px solid var(--chalk);outline-offset:2px}
 
-.login{border:1px solid var(--rule);border-left:2px solid var(--rule-2);border-radius:2px;
-  padding:12px 12px 10px;margin-bottom:8px;background:rgba(239,237,227,.03)}
-.login-out{opacity:.72;border-left-color:var(--rule)}
-.login-head{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:12px;align-items:center}
-.login-who{display:flex;flex-direction:column;gap:4px;min-width:0}
-.login-kind{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--chalk-dim)}
-.login-new{font-size:8.5px;letter-spacing:.14em;border:1px solid var(--uzair);color:var(--uzair);
-  border-radius:999px;padding:1px 6px}
-.login-when{text-align:right;font-family:var(--mono);white-space:nowrap}
-.login-when b{display:block;font-weight:400;font-size:11px;letter-spacing:.08em;color:var(--chalk)}
-.login-when i{display:block;font-style:normal;font-size:9.5px;letter-spacing:.06em;color:var(--chalk-dim);margin-top:3px}
-.login-device{font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--chalk);
-  margin:10px 0 0 38px;line-height:1.5;word-break:break-word}
+.data-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;
+  font-family:var(--mono);font-size:11px;letter-spacing:.02em;color:var(--chalk)}
+.data-table th,.data-table td{padding:9px 12px;text-align:left;white-space:nowrap;vertical-align:middle;
+  border-bottom:1px solid var(--rule)}
+.data-table thead th{font-size:9px;letter-spacing:.18em;text-transform:uppercase;font-weight:400;
+  color:var(--chalk-dim);background:#1a3b33;position:sticky;top:0;z-index:1}
+.data-table tbody tr:last-child td{border-bottom:0}
+.data-table tbody tr:hover td{background:rgba(239,237,227,.04)}
+.data-table td.num{text-align:right}
+.data-table td.dim{color:var(--chalk-dim)}
 
-.login-more{margin:8px 0 0 38px}
-.login-more summary{cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--chalk-dim);padding:6px 0;list-style:none}
-.login-more summary::-webkit-details-marker{display:none}
-.login-more summary::before{content:'+ '}
-.login-more[open] summary::before{content:'– '}
-.login-more dl{margin:6px 0 2px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}
-.kv{min-width:0}
-.kv dt{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--chalk-dim)}
-.kv dd{margin:2px 0 0;font-family:var(--mono);font-size:11px;color:var(--chalk);word-break:break-word}
-.kv-wide{grid-column:1 / -1}
-.kv-wide dd{font-size:10px;color:var(--chalk-dim);line-height:1.5}
+/* Pinned first column. Needs a solid background, or the cells scrolling
+   underneath show through it. */
+.data-table .sticky{position:sticky;left:0;z-index:2;background:#173630;
+  box-shadow:1px 0 0 var(--rule)}
+.data-table thead .sticky{z-index:3;background:#1a3b33}
 
-@media (max-width:560px){
-  .login{padding:11px 10px 9px}
-  .login-head,.device-row{grid-template-columns:22px minmax(0,1fr) auto;gap:10px}
-  .login-device,.login-more{margin-left:32px}
-  .login-more dl{grid-template-columns:1fr 1fr;gap:8px 12px}
+.cell-player{display:inline-flex;align-items:center;gap:8px}
+.cell-player .who-mark{width:18px;height:18px}
+.cell-player .who-name{font-size:17px}
+
+.login-out td:not(.sticky){color:var(--chalk-dim)}
+.when-ago{display:block;color:var(--chalk)}
+.when-at{display:block;font-size:9.5px;color:var(--chalk-dim);margin-top:2px}
+.login-kind{text-transform:uppercase;font-size:9.5px;letter-spacing:.14em}
+.login-new{display:inline-block;margin-left:8px;font-size:8.5px;letter-spacing:.14em;
+  border:1px solid var(--uzair);color:var(--uzair);border-radius:999px;padding:1px 6px}
+.login-device{color:var(--chalk)}
+.data-table td.ua{max-width:320px;overflow:hidden;text-overflow:ellipsis;color:var(--chalk-dim)}
+
+.scroll-hint{display:none;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--chalk-dim);margin:0 0 6px}
+
+@media (max-width:760px){
+  .scroll-hint{display:block}
+  .data-table th,.data-table td{padding:8px 10px}
+  .cell-player .who-name{font-size:15px}
   .history-filter .chip{padding:8px 9px}
-}
-@media (max-width:360px){
-  .login-when i{display:none}
-  .login-more dl{grid-template-columns:1fr}
 }

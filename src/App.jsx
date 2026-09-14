@@ -54,7 +54,6 @@ export default function App() {
   const [me, setMe] = useState(start.me);
   const [signedOutBy, setSignedOutBy] = useState(start.idle ? 'idle' : null);
   const [view, setView] = useState(() => (onHistoryHash() ? 'history' : 'lobby'));
-  const pushedHistory = useRef(false);
   const [store, setStore] = useState(null);
   const [games, setGames] = useState([]);
   const [presence, setPresence] = useState(presenceApi.offlineState());
@@ -356,27 +355,19 @@ export default function App() {
 
   useIdle({ enabled: Boolean(me), onExpire: () => signOut('idle') });
 
-  // The history page is a hash, not a path: base './' only holds because the
-  // app has no path router, and a hash keeps that true while still giving the
-  // phone's back button somewhere sensible to go.
+  // The history page has no button anywhere in the app: the admin reaches it
+  // by typing .../#history. A hash rather than a path, because base './' only
+  // holds while the app has no path router. The admin check below still
+  // applies, so the URL shows anyone else the ordinary lobby.
   useEffect(() => {
     const sync = () => setView(onHistoryHash() ? 'history' : 'lobby');
     window.addEventListener('hashchange', sync);
     return () => window.removeEventListener('hashchange', sync);
   }, []);
 
-  const openHistory = useCallback(() => {
-    pushedHistory.current = true;
-    setView('history');
-    if (!onHistoryHash()) window.location.hash = 'history';
-  }, []);
-
   const closeHistory = useCallback(() => {
     setView('lobby');
-    if (pushedHistory.current) {
-      pushedHistory.current = false;
-      window.history.back();
-    } else if (onHistoryHash()) {
+    if (onHistoryHash()) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   }, []);
@@ -427,8 +418,7 @@ export default function App() {
                      onCancel={cancelInvite} onLocal={startLocal} onSolo={startSolo} />
               {admin && (
                 <Admin me={me} source={source} gameCount={games.length} online={online}
-                       onWipe={wipeLedger} onClearPresence={clearPresence}
-                       onHistory={openHistory} />
+                       onWipe={wipeLedger} onClearPresence={clearPresence} />
               )}
             </>
           )}

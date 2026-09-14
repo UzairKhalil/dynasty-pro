@@ -180,7 +180,9 @@ never stored — they map one-to-one to the player, who is. Firebase rejects
 The code screen tells people sign-ins are recorded.
 
 The admin page is **`#history`, a hash, not a path** — that keeps `base: './'`
-valid while still giving a phone's back button somewhere to go. Like the rest of
+valid. **There is no button for it anywhere in the app, by the owner's choice:**
+the admin opens `.../dynasty-pro/#history` directly. Anyone else at that URL
+just gets the lobby. Like the rest of
 the admin role it is a screen, not a lock: `/logins` is stored without
 authentication. If the database rules do not include `/logins`, writes fall back
 to this device and the page says so rather than hanging on "Loading…".
