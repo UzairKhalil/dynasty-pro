@@ -22,7 +22,11 @@ import { IDS } from '../data/players.js';
 
 const PATH = 'presence';
 export const BEAT_MS = 20_000;
-export const STALE_MS = 90_000;
+// Three minutes. A phone browser throttles a background tab's timers to one
+// run a minute -- a live heartbeat was measured arriving 60s apart -- so a 90s
+// window flipped anyone who glanced at another app to "away". A real departure
+// is still caught fast: onDisconnect fires when the socket closes.
+export const STALE_MS = 180_000;
 export const TICK_MS = 10_000;
 
 const offline = () => Object.fromEntries(IDS.map((id) => [id, { online: false, at: 0, busy: null }]));
@@ -80,6 +84,11 @@ export async function claim(playerId) {
       window.removeEventListener('online', wake);
     }
     stop();
+    // Disarm this seat's disconnect handler. Left armed, switching players on
+    // a shared phone kept it live on that phone's connection: the next network
+    // blip there marked the PREVIOUS player offline, even while they were
+    // playing on their own device.
+    api.onDisconnect(me).cancel().catch(() => {});
     api.update(me, { online: false, at: api.serverTimestamp(), busy: null }).catch(() => {});
   };
 }

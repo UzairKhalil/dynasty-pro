@@ -92,7 +92,42 @@ async function sweep(db, api) {
   }
 }
 
-/** Host creates a pending match and drops an invite in the guest's inbox. */
+const RESUME_ACTIVE_MS = 15 * 60 * 1000;
+const RESUME_PENDING_MS = 10 * 60 * 1000;
+
+/** "Now" on the server's clock. A device clock can be minutes out. */
+function serverNow(api, db) {
+  return new Promise((resolve) => {
+    let stop = null;
+    let done = false;
+    stop = api.onValue(api.ref(db, '.info/serverTimeOffset'), (snap) => {
+      if (done) return;
+      done = true;
+      resolve(Date.now() + (Number(snap.val()) || 0));
+      Promise.resolve().then(() => { if (stop) stop(); });
+    });
+  });
+}
+
+/** Removes the guest's invite, but only if it is still the one for this match. */
+async function clearInvite(db, api, guest, matchId) {
+  try {
+    await api.runTransaction(api.ref(db, `invites/${guest}`), (cur) => {
+      if (!cur) return cur;
+      return cur.matchId === matchId ? null : undefined;
+    });
+  } catch { /* housekeeping: a stale invite is also caught where it is shown */ }
+}
+
+/**
+ * Host creates a pending match and drops an invite in the guest's inbox.
+ *
+ * There is deliberately no onDisconnect on the invite. There used to be one,
+ * registered on the HOST's connection and never cancelled: hours later, any
+ * blip on the host's phone deleted whatever invite that guest held -- including
+ * a brand-new one from someone else. Stale invites are now caught on the
+ * guest's side instead, by watching the match itself (watchInvite).
+ */
 export async function invite(host, guest, mode = 'duel') {
   const fb = await connect();
   if (!fb) return null;
@@ -109,40 +144,106 @@ export async function invite(host, guest, mode = 'duel') {
     updatedAt: api.serverTimestamp()
   });
   await api.set(api.ref(db, `invites/${guest}`), { matchId: id, from: host, mode, at: api.serverTimestamp() });
-  // Don't leave a ringing invite forever if the host wanders off.
-  api.onDisconnect(api.ref(db, `invites/${guest}`)).remove();
   return id;
 }
 
+/**
+ * Accept or decline, as a transaction that only succeeds on a match still
+ * pending for this guest. The plain update() it replaces marked a cancelled or
+ * abandoned match "active" -- putting the guest on a board nobody on the other
+ * side was watching -- and on a match that no longer existed it threw after
+ * the banner had gone, so Accept looked like it did nothing.
+ *
+ * Resolves true only if this call is what moved the match on.
+ */
 export async function respond(matchId, guest, accept) {
   const fb = await connect();
-  if (!fb) return;
+  if (!fb) return false;
   const { db, api } = fb;
-  await api.update(api.ref(db, `matches/${matchId}`), {
-    status: accept ? 'active' : 'declined',
-    updatedAt: api.serverTimestamp()
-  });
-  await api.remove(api.ref(db, `invites/${guest}`));
-}
-
-export async function cancel(matchId, guest) {
-  const fb = await connect();
-  if (!fb) return;
-  const { db, api } = fb;
-  await api.remove(api.ref(db, `invites/${guest}`));
-  await api.update(api.ref(db, `matches/${matchId}`), { status: 'cancelled' });
+  let ok = false;
+  try {
+    const res = await api.runTransaction(api.ref(db, `matches/${matchId}`), (m) => {
+      if (!m) return m;
+      if (m.status !== 'pending' || m.guest !== guest) return undefined;
+      return { ...m, status: accept ? 'active' : 'declined', updatedAt: api.serverTimestamp() };
+    });
+    const after = res && res.snapshot ? res.snapshot.val() : null;
+    ok = Boolean(res && res.committed && after && after.status === (accept ? 'active' : 'declined'));
+  } catch (err) {
+    console.warn('[dynasty] could not answer the challenge:', err?.message || err);
+  }
+  await clearInvite(db, api, guest, matchId);
+  return ok;
 }
 
 /**
- * Says "I want to play again". The next round only starts once BOTH players
- * have asked — otherwise one player restarts the board out from under the
- * other, who is still looking at the result.
+ * Withdraws a challenge. A pending match is cancelled; one the guest has just
+ * accepted is closed as "left by" whoever withdrew, so the guest is told
+ * rather than left facing a board with nobody opposite. A finished match is
+ * never touched.
  */
-export async function askRematch(matchId, playerId) {
+export async function cancel(matchId, guest, by = null) {
   const fb = await connect();
   if (!fb) return;
   const { db, api } = fb;
-  await api.update(api.ref(db, `matches/${matchId}/rematch`), { [playerId]: true });
+  await clearInvite(db, api, guest, matchId);
+  try {
+    await api.runTransaction(api.ref(db, `matches/${matchId}`), (m) => {
+      if (!m) return m;
+      if (m.status === 'pending') return { ...m, status: 'cancelled', updatedAt: api.serverTimestamp() };
+      if (m.status === 'active' && by) {
+        return { ...m, status: 'done', leftBy: by, updatedAt: api.serverTimestamp() };
+      }
+      return undefined;
+    });
+  } catch (err) {
+    console.warn('[dynasty] could not withdraw the challenge:', err?.message || err);
+  }
+}
+
+/**
+ * "Play again". Records this player's agreement and, if that completes it,
+ * starts the next round -- all in one transaction, run by whichever player
+ * agrees SECOND. The round used to be started only by the host, from an
+ * effect, so whenever the host's phone was locked or in the background the
+ * other player's Accept did nothing until the host came back.
+ *
+ * The player is checked against the match. The caller's id used to come from
+ * a stale closure -- whoever was signed in when the page first loaded -- so
+ * agreements landed under "null", or under a sibling who had used the same
+ * phone, and could never complete.
+ *
+ * Starters alternate from a fixed base of [host, guest]: round 0 the host,
+ * round 1 the guest, round 2 the host again. Deriving the order from the last
+ * round's order flipped it twice and let the same player start every round
+ * after the first.
+ */
+export async function agreeRematch(matchId, playerId) {
+  const fb = await connect();
+  if (!fb) return false;
+  const { db, api } = fb;
+  try {
+    const res = await api.runTransaction(api.ref(db, `matches/${matchId}`), (m) => {
+      if (!m) return m;
+      if (m.status !== 'active' || !m.game || m.game.over !== true) return undefined;
+      if (playerId !== m.host && playerId !== m.guest) return undefined;
+      const had = m.rematch || {};
+      const rematch = {};
+      if (had[m.host] === true) rematch[m.host] = true;
+      if (had[m.guest] === true) rematch[m.guest] = true;
+      rematch[playerId] = true;
+      if (!(rematch[m.host] && rematch[m.guest])) return { ...m, rematch };
+      const round = (Number(m.round) || 0) + 1;
+      const mode = MODES[m.mode] ? m.mode : (m.game && MODES[m.game.mode] ? m.game.mode : 'duel');
+      const next = createGame({ mode, order: [m.host, m.guest], starterFlip: round });
+      const { rematch: _drop, ...rest } = m;
+      return { ...rest, round, game: encodeGame(next), updatedAt: api.serverTimestamp() };
+    });
+    return Boolean(res && res.committed);
+  } catch (err) {
+    console.warn('[dynasty] could not agree to a rematch:', err?.message || err);
+    return false;
+  }
 }
 
 export async function withdrawRematch(matchId, playerId) {
@@ -150,23 +251,6 @@ export async function withdrawRematch(matchId, playerId) {
   if (!fb) return;
   const { db, api } = fb;
   await api.remove(api.ref(db, `matches/${matchId}/rematch/${playerId}`));
-}
-
-/**
- * Starts the next round. Only the host calls this, so both clients cannot
- * create two different boards at the same moment. `round` increments, which is
- * what lets the other client tell a NEW game from a stale echo of an old one.
- */
-export async function startRound(matchId, game, round) {
-  const fb = await connect();
-  if (!fb) return;
-  const { db, api } = fb;
-  await api.update(api.ref(db, `matches/${matchId}`), {
-    game: encodeGame(game),
-    round,
-    rematch: null,
-    updatedAt: api.serverTimestamp()
-  });
 }
 
 /** Pushes the authoritative game state. Only the player on turn should call this. */
@@ -203,9 +287,66 @@ export async function watchMatch(matchId, cb) {
   });
 }
 
+/**
+ * The guest's inbox. An invite is only passed on while its match is still
+ * pending for this player -- and the match itself is watched, so the banner
+ * goes the moment the challenge stops being acceptable (withdrawn, taken,
+ * abandoned), not only when the invite record changes. A dead invite is
+ * cleared rather than shown with an Accept that cannot work.
+ */
 export async function watchInvite(playerId, cb) {
   const fb = await connect();
   if (!fb) { cb(null); return () => {}; }
   const { db, api } = fb;
-  return api.onValue(api.ref(db, `invites/${playerId}`), (snap) => cb(snap.val() || null));
+  let seq = 0;
+  let stopMatch = null;
+  const stopInvite = api.onValue(api.ref(db, `invites/${playerId}`), (snap) => {
+    const inv = snap.val();
+    const mine = ++seq;
+    if (stopMatch) { stopMatch(); stopMatch = null; }
+    if (!inv || !inv.matchId) { cb(null); return; }
+    stopMatch = api.onValue(api.ref(db, `matches/${inv.matchId}`), (ms) => {
+      if (mine !== seq) return;
+      const m = ms.val();
+      const live = Boolean(m && m.status === 'pending' && m.guest === playerId && m.host === inv.from);
+      if (live) {
+        cb(inv);
+      } else {
+        cb(null);
+        clearInvite(db, api, playerId, inv.matchId);
+      }
+    });
+  });
+  return () => {
+    seq += 1;
+    if (stopMatch) stopMatch();
+    stopInvite();
+  };
+}
+
+/**
+ * After a reload or a sign-in, finds the online game this player was in, so
+ * refreshing the page no longer abandons it -- and a host who reloads while a
+ * challenge is out goes back to waiting for the answer, instead of the guest
+ * accepting into a board nobody opposite is watching.
+ *
+ * Resolves { matchId, guest } -- the shape of `outgoing` -- or null.
+ */
+export async function findResumable(playerId) {
+  const fb = await connect();
+  if (!fb) return null;
+  const { db, api } = fb;
+  try {
+    const [snap, now] = await Promise.all([api.get(api.ref(db, 'matches')), serverNow(api, db)]);
+    const all = Object.entries(snap.val() || {}).map(([id, m]) => ({ ...m, id }));
+    const fresh = (m, ms) => now - (Number(m.updatedAt || m.createdAt) || 0) < ms;
+    const pick = all
+      .filter((m) => (m.host === playerId || m.guest === playerId) && !m.leftBy)
+      .filter((m) => (m.status === 'active' && fresh(m, RESUME_ACTIVE_MS)) ||
+        (m.status === 'pending' && m.host === playerId && fresh(m, RESUME_PENDING_MS)))
+      .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))[0];
+    return pick ? { matchId: pick.id, guest: pick.guest } : null;
+  } catch {
+    return null;
+  }
 }

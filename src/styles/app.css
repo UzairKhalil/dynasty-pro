@@ -364,3 +364,7 @@
   .cell-player .who-name{font-size:15px}
   .history-filter .chip{padding:8px 9px}
 }
+
+/* ---------- lobby notices ---------- */
+.banner-note{border-left:2px solid var(--zain)}
+.banner-sub{display:block;margin-top:5px;font-size:10px;letter-spacing:.06em;color:var(--chalk-dim)}

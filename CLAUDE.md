@@ -156,6 +156,12 @@ If Maryam can see Uzair online, Uzair must see Maryam online. Three rules in
   viewers converge instead of each holding whatever they last computed.
 
 Claims use `update()`, not `set()`, so a reconnect can't wipe `busy` mid-match.
+Releasing a seat **cancels its `onDisconnect`**: on a shared phone, switching
+players otherwise left the previous player's handler armed on that phone's
+connection, and the next network blip there marked them offline while they were
+playing on their own device. The away window is **three minutes**, because a
+background tab's timers are throttled to once a minute (measured live: heartbeats
+60s apart); a real departure is still caught promptly by `onDisconnect`.
 The admin's clear writes per player through one multi-path update: the rules
 grant writes at `/presence/$player` only, so the old `set()` on the whole
 collection was denied and the button silently did nothing.
@@ -170,11 +176,39 @@ alone is a real bug that shipped — a fresh board has 0 moves against a finishe
 one's 5, so the player who did not press "play again" kept staring at the old
 result while the other played on.
 
-**Both players must agree before the next round starts.** Pressing "Play again"
-writes `rematch/{player}`; only when every seat has asked does the **host** (and
-only the host, so two clients cannot push two different boards at once) call
-`startRound()`, which sets the new game, increments `round` and clears
-`rematch` in one update. Pressing the waiting button withdraws the request.
+**Both players must agree before the next round starts,** and the round is
+started by `agreeRematch()` in `src/net/match.js` — **one transaction, run by
+whichever player agrees second**. It records the agreement, and if that makes
+both, writes the new board, bumps `round` and clears `rematch` atomically, so
+two clients can never push two different boards. It used to be a host-only
+effect, which stalled whenever the host's phone was locked. Pressing the
+waiting button withdraws. Starters alternate from a fixed `[host, guest]` base.
+
+**Callbacks that use `me` must list it as a dependency.** `nextGame` once had
+`[]`, so it kept the `me` of the first render — `null` after landing on the code
+screen, or a sibling's id on a shared phone — and every "Play again" recorded
+the wrong player. `agreeRematch()` now also refuses any id not in the match.
+
+## Challenges
+
+Accepting (`respond()`) is a transaction that only succeeds on a match still
+**pending for that guest**; it resolves `false` otherwise and the lobby says the
+challenge has gone. The blind `update()` it replaced revived cancelled matches
+as "active" and threw on missing ones after the banner had already vanished.
+Invites carry **no `onDisconnect`** — the old one sat on the host's connection,
+was never cancelled, and deleted later invites whenever the host's phone
+blipped. Instead `watchInvite()` follows the match itself and hides and clears
+an invite the moment its match stops being pending. Challenging someone who has
+already challenged you accepts theirs. `findResumable()` picks an active game or
+a host's open challenge back up after a reload, as `outgoing`.
+
+## Every device on the current build
+
+Each build ships `version.json` (see `vite.config.js`); `src/net/version.js`
+polls it every two minutes and on returning to the tab, and the app reloads
+into a new deploy — but only when no game or challenge is in progress. Phones
+keep tabs open for days and resume the JavaScript they first loaded, so without
+this a fix never reached them, and old and new clients disagreed.
 
 ## Sessions and sign-in history
 

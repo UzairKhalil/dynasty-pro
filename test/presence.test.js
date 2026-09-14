@@ -86,7 +86,10 @@ function fakeDatabase({ serverClock = () => Date.now(), offset = 0 } = {}) {
     onDisconnect: (node) => ({
       update: async (value) => { pending.push({ path: node.path, value }); },
       set: async (value) => { pending.push({ path: node.path, value, replace: true }); },
-      remove: async () => { pending.push({ path: node.path, value: null, replace: true }); }
+      remove: async () => { pending.push({ path: node.path, value: null, replace: true }); },
+      cancel: async () => {
+        for (let i = pending.length - 1; i >= 0; i -= 1) if (pending[i].path === node.path) pending.splice(i, 1);
+      }
     })
   };
 
@@ -103,6 +106,8 @@ function fakeDatabase({ serverClock = () => Date.now(), offset = 0 } = {}) {
       else merge(h.path, h.value);
       emit(h.path);
     },
+    /** This whole client's socket drops: every handler it still has armed runs. */
+    dropAll() { while (pending.length) this.drop(0), pending.shift(); },
     setConnected(v) { info.connected = v; emitInfo('.info/connected'); },
     setOffset(v) { info.offset = v; emitInfo('.info/serverTimeOffset'); },
     put(path, value) { writeAt(path, value); emit(path); }
@@ -256,6 +261,31 @@ describe('what claim writes', () => {
     fake.drop(0);
     expect(fake.root.presence.zain.online).toBe(false);
     stopZain();
+  });
+});
+
+describe('switching players on a shared phone', () => {
+  it('disarms the previous player’s disconnect handler', async () => {
+    const stopZahra = await claim('zahra');     // the family phone, Zahra first
+    await settle();
+    stopZahra();                                // "Not Zahra?"
+    await settle();
+    const stopZain = await claim('zain');       // then Zain on the same phone
+    await settle();
+    fake.put('presence/zahra', { online: true, at: Date.now() });   // the real Zahra, on her own device
+    fake.dropAll();                             // the phone's connection blips
+    expect(fake.root.presence.zahra.online).toBe(true);
+    expect(fake.root.presence.zain.online).toBe(false);
+    stopZain();
+  });
+});
+
+describe('the away window', () => {
+  it('survives a background tab throttled to one heartbeat a minute', () => {
+    const now = 1_000_000_000_000;
+    // measured on the live site: a background tab's writes arrived 60s apart
+    expect(isOnline({ online: true, at: now - 61_000 }, now)).toBe(true);
+    expect(isOnline({ online: true, at: now - 125_000 }, now)).toBe(true);   // even one late beat
   });
 });
 

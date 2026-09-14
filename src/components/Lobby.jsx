@@ -9,19 +9,32 @@ function Dot({ on }) {
 
 export default function Lobby({
   me, presence, online, invite, outgoing,
-  onChallenge, onRespond, onCancel, onLocal, onSolo
+  onChallenge, onRespond, onCancel, onLocal, onSolo, notice = null
 }) {
   const [level, setLevel] = useState('steady');
   const [soloMode, setSoloMode] = useState('duel');
   const others = IDS.filter((id) => id !== me);
 
+  const hostAway = Boolean(invite && online && presence[invite.from] && !presence[invite.from].online);
+
   return (
     <>
+      {notice && (
+        <div className="banner banner-note" role="status">
+          <span className="banner-text">{notice}</span>
+        </div>
+      )}
+
       {invite && (
         <div className="banner">
           <span className="banner-text">
             <b>{P[invite.from].name}</b> wants a game
             {invite.mode === 'free' ? ' · free-for-all' : ' · duel'}
+            {hostAway && (
+              // Still worth accepting: their page picks the game up the moment
+              // they come back to it.
+              <span className="banner-sub">They look away right now — the game starts when they're back.</span>
+            )}
           </span>
           <span className="choices">
             <button className="act" onClick={() => onRespond(invite, true)}>Accept</button>

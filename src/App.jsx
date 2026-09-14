@@ -8,6 +8,7 @@ import History from './components/History.jsx';
 import useIdle from './hooks/useIdle.js';
 import { isExpired, readActive, writeActive } from './net/idle.js';
 import { recordLogin } from './net/logins.js';
+import { isNewBuildAvailable } from './net/version.js';
 import Board from './components/Board.jsx';
 import Seats from './components/Seats.jsx';
 import { Standings, HeadToHead, GameLog } from './components/Panels.jsx';
@@ -60,6 +61,13 @@ export default function App() {
   const [invite, setInvite] = useState(null);
   const [outgoing, setOutgoing] = useState(null);
   const [session, setSession] = useState(null);
+  const [lobbyNote, setLobbyNote] = useState(null);
+  const [updateReady, setUpdateReady] = useState(false);
+
+  const flash = useCallback((text) => {
+    setLobbyNote(text);
+    setTimeout(() => setLobbyNote((cur) => (cur === text ? null : cur)), 6000);
+  }, []);
 
   const online = isConfigured();
   const admin = isAdmin(me);
@@ -151,6 +159,48 @@ export default function App() {
     presenceApi.setBusy(me, busyId || null);
   }, [me, online, busyId]);
 
+  /* ---------------- resume after a reload ---------------- */
+
+  // A reload used to abandon an online game, and a host who reloaded while a
+  // challenge was out stopped listening for the answer. Picking the match back
+  // up as `outgoing` is enough: the match watcher above turns an active match
+  // into a session and leaves a pending one waiting.
+  useEffect(() => {
+    if (!me || !online) return undefined;
+    let dead = false;
+    matchApi.findResumable(me).then((r) => {
+      if (!dead && r) setOutgoing((cur) => cur || r);
+    });
+    return () => { dead = true; };
+  }, [me, online]);
+
+  /* ---------------- staying on the current build ---------------- */
+
+  // Phones keep a tab open for days and resume the OLD JavaScript without
+  // reloading, so a fix never reached them and old and new clients disagreed
+  // about presence and rematches. Each deploy ships version.json; when it
+  // changes, reload -- but only when nothing is in progress.
+  useEffect(() => {
+    if (!import.meta.env.PROD) return undefined;
+    let dead = false;
+    const check = async () => {
+      if (!dead && await isNewBuildAvailable()) setUpdateReady(true);
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    const timer = setInterval(check, 2 * 60 * 1000);
+    document.addEventListener('visibilitychange', onVisible);
+    check();
+    return () => {
+      dead = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (updateReady && !session && !outgoing) window.location.reload();
+  }, [updateReady, session, outgoing]);
+
   /* ---------------- moves ---------------- */
 
   const doMove = useCallback((idx) => {
@@ -183,20 +233,9 @@ export default function App() {
 
   /* ---------------- rematch ---------------- */
 
-  // Once BOTH players have asked, exactly one of them creates the next board.
-  // The host is chosen arbitrarily but consistently, so the two clients cannot
-  // push two different boards in the same instant.
-  useEffect(() => {
-    const s = session;
-    if (!s || s.kind !== 'online' || !s.game.over || s.ended) return;
-    if (s.host !== me) return;
-    const agreed = s.game.order.every((id) => s.rematch && s.rematch[id]);
-    if (!agreed) return;
-    const round = (s.round || 0) + 1;
-    matchApi.startRound(s.matchId, createGame({
-      mode: s.game.mode, order: s.game.order, starterFlip: round
-    }), round);
-  }, [session, me]);
+  // Starting the next online round happens inside matchApi.agreeRematch(), as
+  // a transaction run by whichever player agrees second. There is no host-only
+  // effect any more: it stalled whenever the host's phone was locked.
 
   const withdrawRematch = useCallback(() => {
     setSession((prev) => {
@@ -259,22 +298,25 @@ export default function App() {
     });
   }, [me]);
 
+  // `me` MUST be a dependency. This callback used to list none, so it kept the
+  // `me` of the very first render: null after landing on the code screen, or
+  // a sibling's id on a shared phone. Every "Play again" then recorded the
+  // wrong player and the rematch could never complete.
   const nextGame = useCallback(() => {
+    if (session && session.kind === 'online') {
+      // Ask, don't restart: the board only resets once both players agree.
+      if (session.game.over && !session.ended) matchApi.agreeRematch(session.matchId, me);
+      return;
+    }
     setSession((prev) => {
-      if (!prev) return prev;
-      if (prev.kind === 'online') {
-        // Ask, don't restart. The board only resets once the other player has
-        // asked too, so nobody has the result yanked away mid-read.
-        if (prev.game.over) matchApi.askRematch(prev.matchId, me);
-        return prev;
-      }
+      if (!prev || prev.kind === 'online') return prev;
       const order = prev.game.mode === 'duel' ? prev.queue.slice(0, 2) : prev.game.order;
       return {
         ...prev, id: nextId(), lastMove: null,
         game: createGame({ mode: prev.game.mode, order, starterFlip: prev.starterFlip })
       };
     });
-  }, []);
+  }, [session, me]);
 
   const leaveGame = useCallback(() => {
     setSession((prev) => {
@@ -289,21 +331,36 @@ export default function App() {
 
   /* ---------------- lobby actions ---------------- */
 
-  const challenge = useCallback(async (guest) => {
-    const id = await matchApi.invite(me, guest, 'duel');
-    if (id) setOutgoing({ matchId: id, guest });
-  }, [me]);
-
   const respond = useCallback(async (inv, accept) => {
     setInvite(null);
-    await matchApi.respond(inv.matchId, me, accept);
-    if (accept) setOutgoing({ matchId: inv.matchId, guest: me });
-  }, [me]);
+    const ok = await matchApi.respond(inv.matchId, me, accept);
+    if (!accept) return;
+    if (!ok) {
+      flash('That challenge is no longer open \u2014 challenge them back.');
+      return;
+    }
+    // Accepting one challenge withdraws any of our own still waiting.
+    if (outgoing && outgoing.matchId !== inv.matchId) {
+      matchApi.cancel(outgoing.matchId, outgoing.guest, me);
+    }
+    setOutgoing({ matchId: inv.matchId, guest: me });
+  }, [me, outgoing, flash]);
+
+  const challenge = useCallback(async (guest) => {
+    // They challenged us first: take their game rather than crossing wires
+    // with a second match that one of us would be left waiting on.
+    if (invite && invite.from === guest) {
+      respond(invite, true);
+      return;
+    }
+    const id = await matchApi.invite(me, guest, 'duel');
+    if (id) setOutgoing({ matchId: id, guest });
+  }, [me, invite, respond]);
 
   const cancelInvite = useCallback(async () => {
-    if (outgoing) await matchApi.cancel(outgoing.matchId, outgoing.guest);
+    if (outgoing) await matchApi.cancel(outgoing.matchId, outgoing.guest, me);
     setOutgoing(null);
-  }, [outgoing]);
+  }, [outgoing, me]);
 
   const wipeLedger = useCallback(() => {
     if (!isAdmin(me)) return;
@@ -339,7 +396,7 @@ export default function App() {
     const who = me;
     // Signing out must not strand an online opponent or leave a challenge ringing.
     if (session && session.kind === 'online') matchApi.leave(session.matchId, who);
-    if (outgoing) matchApi.cancel(outgoing.matchId, outgoing.guest);
+    if (outgoing) matchApi.cancel(outgoing.matchId, outgoing.guest, who);
     setSession(null);
     setOutgoing(null);
     writeMe(null);
@@ -415,7 +472,8 @@ export default function App() {
               <h2 className="panel-title">Choose a game</h2>
               <Lobby me={me} presence={presence} online={online} invite={invite}
                      outgoing={outgoing} onChallenge={challenge} onRespond={respond}
-                     onCancel={cancelInvite} onLocal={startLocal} onSolo={startSolo} />
+                     onCancel={cancelInvite} onLocal={startLocal} onSolo={startSolo}
+                     notice={lobbyNote} />
               {admin && (
                 <Admin me={me} source={source} gameCount={games.length} online={online}
                        onWipe={wipeLedger} onClearPresence={clearPresence} />
@@ -539,7 +597,8 @@ function GameView({ session, me, onPlay, onNext, onLeave, onUndo, onWithdrawRema
             )
         ) : game.over ? (
           <button className="act" id="primary" onClick={onNext}>Next game</button>
-        ) : (
+        ) : kind === 'online' ? null : (
+          // One player cannot restart a shared board unilaterally.
           <button className="act ghost" id="primary" onClick={onNext}>Restart</button>
         )}
         {!game.over && kind !== 'online' && (
